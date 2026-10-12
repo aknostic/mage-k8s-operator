@@ -1,0 +1,19 @@
+# Broken-image variant of the magento-reference image, used by the
+# failure-path upgrade-arc e2e (test/e2e/upgrade_test.go) to drive the
+# operator's `Reason=SetupUpgradeFailed` + lockstep-refusal contract.
+#
+# The variant inherits everything from the reference image and replaces
+# /app/bin/magento with a PHP shim that exits 1 on `setup:upgrade`.
+# Workload pods (nginx + php-fpm) never invoke bin/magento, so swapping
+# the file doesn't break the storefront serving path; only the operator-
+# owned upgrade Job sees the failure.
+#
+# Build via `make build-broken-reference-image`. The Make target tags
+# this as `${MAGENTO_REFERENCE_IMAGE}-broken-rc1` (i.e.
+# mage-operator/magento-reference:2.4.8-broken-rc1) and kind-loads it
+# into the e2e cluster alongside the working image.
+
+ARG BASE_IMAGE=mage-operator/magento-reference:2.4.8
+FROM ${BASE_IMAGE}
+
+COPY bin-magento-broken.php /app/bin/magento

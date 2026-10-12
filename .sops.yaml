@@ -1,0 +1,17 @@
+# SOPS configuration — see docs/internals/secrets.md for the full flow.
+#
+# creation_rules binds path patterns to age recipients. When you run
+# `sops -e -i config/secrets/foo.yaml`, SOPS picks the first matching rule
+# and encrypts the data fields to every listed recipient. Decryption
+# requires the corresponding private key, normally at ./age.key (gitignored).
+#
+# Adding a new recipient (new team member, CI key, etc.): append their
+# age public key to the `age:` line (comma-separated), commit, and run
+# `sops updatekeys config/secrets/**.yaml` to re-encrypt existing files.
+# Removing a recipient requires key rotation, not just edit — once a
+# value has been encrypted to a key, anyone who had that key saw it.
+
+creation_rules:
+  - path_regex: config/secrets/.+\.ya?ml$
+    encrypted_regex: "^(data|stringData)$"
+    age: age1kgzwuesm0pdjf4a8dtw8tueantquk6q8x6lzhhjt5fmjhg5rlcksxsyvvt

@@ -1,0 +1,10 @@
+## Apply the whole demo stack with: kubectl apply -k config/samples/
+##
+## What you get: the `demo` namespace and a MageStore CR that
+## provisions its MariaDB CR, OpenSearchCluster CR, and one-shot
+## setup:install Job inline (ADRs 004 + 005). The reference image
+## must be `kind load`-ed ahead of time.
+resources:
+- namespace.yaml
+- mage_v1alpha1_magestore.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

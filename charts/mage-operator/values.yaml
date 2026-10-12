@@ -1,0 +1,78 @@
+# Default values for mage-operator. The chart ships the operator
+# manager Deployment, ClusterRole + Bindings for the resources it
+# reconciles, a leader-election Role + RoleBinding, an optional
+# metrics Service, and the MageStore CRD (under crds/, installed
+# once per cluster — Helm does not upgrade CRDs).
+
+replicaCount: 1
+
+image:
+  repository: registry.gitlab.aknostic.com/aknostic/mage-operator
+  tag: ""  # defaults to Chart.AppVersion when empty
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # When false, the chart does not create a ServiceAccount and the
+  # Deployment uses serviceAccount.name (which must already exist).
+  create: true
+  # When unset, the chart names the SA after the chart fullname.
+  name: ""
+  annotations: {}
+
+# leader election keeps a single active reconciler when replicaCount
+# > 1. Required when running HA. Disable for development / single-
+# replica installs only if you understand the implications.
+leaderElection:
+  enabled: true
+
+# Metrics endpoint. Off by default — production users with
+# Prometheus + cert-manager wire it up by setting enabled: true and
+# pointing their ServiceMonitor / PodMonitor at the metrics Service.
+# v0.1.0 keeps the endpoint un-authenticated (HTTP); secure metrics
+# (TLS via cert-manager) graduates to a Phase-2 chart value.
+metrics:
+  enabled: false
+  port: 8080
+  service:
+    annotations: {}
+
+# Health + readiness probes bind to this port inside the manager
+# container. Surfaced so users who must avoid port collisions on a
+# shared node pool can rebind it.
+healthProbePort: 8081
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Pod-level securityContext. Kubebuilder restricted-PSS defaults.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level securityContext. Kubebuilder restricted-PSS defaults.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

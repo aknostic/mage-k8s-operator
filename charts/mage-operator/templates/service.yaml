@@ -1,0 +1,26 @@
+{{- if .Values.metrics.enabled }}
+# Metrics Service. Off by default; production users with Prometheus
+# wire a ServiceMonitor / PodMonitor at this Service after enabling
+# values.metrics.enabled. v0.1.0 ships HTTP metrics; cert-manager-
+# backed TLS graduates to a Phase-2 chart value.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mage-operator.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mage-operator.labels" . | nindent 4 }}
+  {{- with .Values.metrics.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "mage-operator.selectorLabels" . | nindent 4 }}
+{{- end }}

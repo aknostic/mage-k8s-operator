@@ -1,0 +1,200 @@
+/*
+Copyright 2026.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package controller
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	mariadbv1alpha1 "github.com/mariadb-operator/mariadb-operator/v26/api/v1alpha1"
+	opensearchv1 "github.com/opensearch-project/opensearch-k8s-operator/opensearch-operator/api/opensearch.org/v1"
+	rabbitmqv1beta1 "github.com/rabbitmq/cluster-operator/v2/api/v1beta1"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+
+	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	// +kubebuilder:scaffold:imports
+)
+
+// These tests use Ginkgo (BDD-style Go testing framework). Refer to
+// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+
+// testInlineSMTPSecretName is the operator-owned SMTP Secret name used
+// in SMTP envFrom assertion tests across the controller test suite.
+// The store is created with Name "store" in each suite, so the inline
+// SMTP Secret name follows the <store>-smtp convention.
+const testInlineSMTPSecretName = "store-smtp"
+
+// testSecretRefSMTPSecretName is the user-supplied Secret name used in
+// secretRef-mode SMTP envFrom assertion tests across the controller suite.
+const testSecretRefSMTPSecretName = "my-smtp-secret"
+
+var (
+	ctx       context.Context
+	cancel    context.CancelFunc
+	testEnv   *envtest.Environment
+	cfg       *rest.Config
+	k8sClient client.Client
+)
+
+func TestControllers(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	RunSpecs(t, "Controller Suite")
+}
+
+var _ = BeforeSuite(func() {
+	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+
+	ctx, cancel = context.WithCancel(context.TODO())
+
+	var err error
+	err = magev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = mariadbv1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = opensearchv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = rabbitmqv1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = gatewayv1.Install(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	// +kubebuilder:scaffold:scheme
+
+	By("bootstrapping test environment")
+	// Load the upstream operators' CRDs from the Go module cache so
+	// envtest can create MariaDB / RabbitmqCluster CRs. Resolving via
+	// `go list -m -f {{.Dir}}` keeps the test portable across GOPATH /
+	// GOMODCACHE layouts instead of hardcoding a path that depends on
+	// $HOME. Cache (Valkey) is no longer in this list per ADR 009 —
+	// the operator owns the StatefulSet directly, no upstream CRD.
+	mariadbCRDs := filepath.Join(
+		moduleDir("github.com/mariadb-operator/mariadb-operator/v26"),
+		"config", "crd", "bases",
+	)
+	opensearchCRDs := filepath.Join(
+		moduleDir("github.com/opensearch-project/opensearch-k8s-operator/opensearch-operator"),
+		"config", "crd", "bases",
+	)
+	rabbitmqCRDs := filepath.Join(
+		moduleDir("github.com/rabbitmq/cluster-operator/v2"),
+		"config", "crd", "bases",
+	)
+	gatewayAPICRDs := filepath.Join(
+		moduleDir("sigs.k8s.io/gateway-api"),
+		"config", "crd", "standard",
+	)
+	testEnv = &envtest.Environment{
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			mariadbCRDs,
+			opensearchCRDs,
+			rabbitmqCRDs,
+			gatewayAPICRDs,
+		},
+		ErrorIfCRDPathMissing: true,
+	}
+
+	// Retrieve the first found binary directory to allow running tests from IDEs
+	if getFirstFoundEnvTestBinaryDir() != "" {
+		testEnv.BinaryAssetsDirectory = getFirstFoundEnvTestBinaryDir()
+	}
+
+	// cfg is defined in this file globally.
+	cfg, err = testEnv.Start()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(cfg).NotTo(BeNil())
+
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient).NotTo(BeNil())
+})
+
+var _ = AfterSuite(func() {
+	By("tearing down the test environment")
+	cancel()
+	Eventually(func() error {
+		return testEnv.Stop()
+	}, time.Minute, time.Second).Should(Succeed())
+})
+
+// fullCapabilities returns a Capabilities snapshot with every soft-dep
+// flag set, matching the envtest CRD set installed in BeforeSuite.
+// Tests that exercise the inline/ref paths want full capabilities;
+// tests targeting the DependencyOperatorMissing branch construct their
+// own zeroed snapshot inline. Cache no longer appears here — ADR 009
+// removed the Valkey CRD dependency.
+func fullCapabilities() Capabilities {
+	return Capabilities{
+		HasMariaDB:    true,
+		HasOpenSearch: true,
+		HasRabbitmq:   true,
+		HasGateway:    true,
+		HasHTTPRoute:  true,
+	}
+}
+
+// moduleDir resolves a Go module's on-disk location via `go list`. Used
+// to point envtest at CRD YAMLs bundled inside third-party modules
+// (mariadb-operator in particular) without hardcoding module-cache paths.
+// Returns empty string on failure; the caller is expected to fail the
+// suite explicitly via ErrorIfCRDPathMissing if the path doesn't exist.
+func moduleDir(module string) string {
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", module).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// getFirstFoundEnvTestBinaryDir locates the first binary in the specified path.
+// ENVTEST-based tests depend on specific binaries, usually located in paths set by
+// controller-runtime. When running tests directly (e.g., via an IDE) without using
+// Makefile targets, the 'BinaryAssetsDirectory' must be explicitly configured.
+//
+// This function streamlines the process by finding the required binaries, similar to
+// setting the 'KUBEBUILDER_ASSETS' environment variable. To ensure the binaries are
+// properly set up, run 'make setup-envtest' beforehand.
+func getFirstFoundEnvTestBinaryDir() string {
+	basePath := filepath.Join("..", "..", "bin", "k8s")
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		logf.Log.Error(err, "Failed to read directory", "path", basePath)
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return filepath.Join(basePath, entry.Name())
+		}
+	}
+	return ""
+}

@@ -1,0 +1,21 @@
+# Two-node kind config for `make test-e2e`. Differs from
+# `kind-config.yaml` (the dev-cluster config) by:
+#
+#   - cluster name doubles the e2e suite's KIND_CLUSTER variable
+#     so `kind get clusters` distinguishes dev from e2e.
+#   - no extraPortMappings: the dev cluster claims host ports
+#     8080/8443; the e2e cluster reaches services via
+#     `kubectl port-forward` to a free local port instead, which
+#     means dev and e2e can run side-by-side.
+#
+# A single control-plane node ran out of memory during the
+# e2e suite's Magento bootstrap + 3-replica OpenSearch + Magento
+# workload simultaneous startup (the upgrade-arc spec exercises
+# all three at once). Splitting across a worker doubles the
+# memory ceiling and matches the dev-cluster topology.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: mage-operator-test-e2e
+nodes:
+  - role: control-plane
+  - role: worker

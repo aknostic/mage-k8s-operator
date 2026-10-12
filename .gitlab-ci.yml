@@ -1,0 +1,466 @@
+stages:
+  - check         # security + lint in parallel
+  - test
+  - build
+  - release
+
+variables:
+  IMAGE_NAME: ${CI_REGISTRY_IMAGE}
+  GOPATH: ${CI_PROJECT_DIR}/.go
+  GOCACHE: ${CI_PROJECT_DIR}/.go/build-cache
+  GOFLAGS: -buildvcs=false
+  GOPROXY: "https://go-proxy.eu|https://proxy.golang.org|direct"
+  SAST_EXCLUDED_PATHS: ".go, vendor, testdata"
+
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
+.go-cache:
+  cache:
+    key:
+      files:
+        - go.sum
+      prefix: go
+    paths:
+      - .go/pkg/mod/
+      - .go/build-cache/
+      - .go/bin/
+    policy: pull
+
+# Branch commits/MRs: full pipeline (security, lint, test, build)
+# Semver tags: lightweight pipeline (retag image + create release)
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+# ── Security ────────────────────────────────────────────────────────
+
+trufflehog-scan:
+  stage: check
+  image: trufflesecurity/trufflehog:3.93.4
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        git clone --branch "$CI_COMMIT_REF_NAME" --single-branch "$CI_REPOSITORY_URL" .
+        trufflehog git file://. --only-verified --fail --no-update
+      else
+        git clone --depth 50 --branch "$CI_COMMIT_REF_NAME" --single-branch "$CI_REPOSITORY_URL" .
+
+        if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+          BASE_SHA="$CI_MERGE_REQUEST_TARGET_BRANCH_SHA"
+        elif [ -n "$CI_COMMIT_BEFORE_SHA" ] && [ "$CI_COMMIT_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+          BASE_SHA="$CI_COMMIT_BEFORE_SHA"
+        else
+          BASE_SHA="HEAD~10"
+        fi
+
+        trufflehog git file://. --since-commit="$BASE_SHA" --only-verified --fail --no-update
+      fi
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+  allow_failure: false
+
+govulncheck:
+  stage: check
+  image: golang:1.26.3
+  extends: .go-cache
+  script:
+    - go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+    - export PATH="${GOPATH}/bin:${PATH}"
+    - govulncheck ./...
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+  allow_failure: false
+
+semgrep-sast:
+  stage: test
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+no-personal-emails:
+  stage: check
+  image: alpine:3
+  variables:
+    GIT_STRATEGY: fetch
+  before_script:
+    # alpine:3 ships BusyBox grep; install GNU grep so the regex
+    # engine matches what was tested locally (BusyBox grep historically
+    # lacks reliable \b word-boundary support in ERE).
+    - apk add --no-cache grep
+  script:
+    - |
+      EMAIL_PATTERN='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+      ALLOWED_TEST_DOMAINS='@([A-Za-z0-9._-]+\.)?(example\.com|example\.test|example\.org|localhost)\b'
+      ALLOWED_INFRA='@(gitlab\.aknostic\.com|registry\.gitlab\.aknostic\.com)\b'
+      MATCHES=$(grep -rEn "$EMAIL_PATTERN" \
+        --include='*.yaml' --include='*.yml' --include='*.go' \
+        --include='*.md' --include='*.php' --include='*.sh' \
+        --exclude-dir=vendor --exclude-dir=.go --exclude-dir=.git \
+        --exclude-dir=superpowers . \
+        | grep -vE "$ALLOWED_TEST_DOMAINS" \
+        | grep -vE "$ALLOWED_INFRA" || true)
+      if [ -n "$MATCHES" ]; then
+        echo "ERROR: emails outside the allowed test/infra domains found:"
+        echo "$MATCHES"
+        echo ""
+        echo "Allowed: @example.com, @example.test, @example.org, @localhost"
+        echo "         (subdomains OK), git@gitlab.aknostic.com,"
+        echo "         registry.gitlab.aknostic.com"
+        echo "Use changeme@example.com for headline samples,"
+        echo "    admin@example.com / noreply@example.com elsewhere."
+        exit 1
+      fi
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+# ── Lint ────────────────────────────────────────────────────────────
+
+lint:
+  stage: check
+  image: golangci/golangci-lint:v2.11.4-alpine
+  extends: .go-cache
+  script:
+    - go fmt ./... && git diff --exit-code
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        golangci-lint run --timeout 10m --new-from-rev="${CI_MERGE_REQUEST_TARGET_BRANCH_SHA}"
+      else
+        golangci-lint run --timeout 10m
+      fi
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+helm-lint:
+  stage: check
+  image:
+    name: alpine/helm:3.16
+    entrypoint: [""]
+  script:
+    - helm lint charts/mage-operator
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+kube-linter:
+  stage: check
+  image: alpine:3
+  before_script:
+    - wget -qO- https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz | tar xz
+  script:
+    - ./kube-linter lint charts/mage-operator
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+hadolint:
+  stage: check
+  image:
+    name: hadolint/hadolint:v2.14.0-alpine
+    entrypoint: [""]
+  script:
+    - hadolint Dockerfile
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+changelog-check:
+  stage: check
+  image: alpine:3
+  variables:
+    # Full clone — the merge-base SHA must be reachable in the local
+    # repo for `git diff` to resolve. The project default GIT_DEPTH=20
+    # is not guaranteed to reach that far on long-running branches.
+    GIT_DEPTH: "0"
+  before_script:
+    # alpine:3 does not ship git; install it before invoking diff.
+    - apk add --no-cache git
+  script:
+    - |
+      set -eu
+      # Use CI_MERGE_REQUEST_DIFF_BASE_SHA (the merge-base) rather than
+      # CI_MERGE_REQUEST_TARGET_BRANCH_SHA (the tip of the target branch).
+      # The merge-base lies on the source branch's history by construction,
+      # so it is always reachable in the source-branch clone — even with
+      # GitLab's default fetch strategy that pulls only the source ref.
+      # The target-branch tip, by contrast, lives on a sibling ref that is
+      # not part of this clone, so a diff against it silently produces no
+      # output (git errors to stderr, the pipeline swallows it, and the
+      # if/grep falls through to a misleading "not modified" message).
+      echo "Diff base SHA: $CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      echo "HEAD SHA:      $(git rev-parse HEAD)"
+      if git diff --name-only "$CI_MERGE_REQUEST_DIFF_BASE_SHA" HEAD | grep -q '^CHANGELOG.md$'; then
+        echo "CHANGELOG.md was modified"
+      else
+        echo "ERROR: CHANGELOG.md was not modified in this MR"
+        exit 1
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ── Test ────────────────────────────────────────────────────────────
+
+test:
+  stage: test
+  image: golang:1.26.3
+  extends: .go-cache
+  cache:
+    policy: pull-push
+  script:
+    - make test
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: cover.out
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+
+# ── Build ───────────────────────────────────────────────────────────
+
+build-and-push:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  script:
+    - |
+      mkdir -p /kaniko/.docker
+      ENCODED=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$ENCODED" > /kaniko/.docker/config.json
+    - |
+      DESTINATIONS="--destination ${IMAGE_NAME}:${CI_COMMIT_SHA}"
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        DESTINATIONS="${DESTINATIONS} --destination ${IMAGE_NAME}:latest"
+      fi
+    - /kaniko/executor
+      --context ${CI_PROJECT_DIR}
+      --dockerfile ${CI_PROJECT_DIR}/Dockerfile
+      ${DESTINATIONS}
+      --cache=true
+      --cache-repo=${IMAGE_NAME}/cache
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+container-scanning:
+  stage: build
+  image:
+    name: aquasec/trivy:0.69.1
+    entrypoint: [""]
+  variables:
+    GIT_STRATEGY: none
+  needs:
+    - job: build-and-push
+  script:
+    - |
+      mkdir -p "$HOME/.docker"
+      ENCODED=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$ENCODED" > "$HOME/.docker/config.json"
+
+      trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress "${IMAGE_NAME}:${CI_COMMIT_SHA}"
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  allow_failure: false
+
+generate-sbom:
+  stage: build
+  image: alpine:3.21
+  variables:
+    GIT_STRATEGY: none
+    SYFT_VERSION: "1.25.0"
+  needs:
+    - job: build-and-push
+  script:
+    - apk add --no-cache curl
+    - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin "v${SYFT_VERSION}"
+    - |
+      mkdir -p "$HOME/.docker"
+      ENCODED=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$ENCODED" > "$HOME/.docker/config.json"
+    - syft "${IMAGE_NAME}:${CI_COMMIT_SHA}" -o spdx-json=sbom.spdx.json -o cyclonedx-json=sbom.cdx.json
+  artifacts:
+    paths:
+      - sbom.spdx.json
+      - sbom.cdx.json
+    expire_in: 90 days
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+sign-image:
+  stage: build
+  image: alpine:3.21
+  variables:
+    GIT_STRATEGY: none
+    COSIGN_VERSION: "2.6.2"
+  needs:
+    - job: build-and-push
+  script:
+    - apk add --no-cache curl
+    - curl -sSfL -o /usr/local/bin/cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+    - chmod +x /usr/local/bin/cosign
+    - |
+      mkdir -p "$HOME/.docker"
+      ENCODED=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$ENCODED" > "$HOME/.docker/config.json"
+    - echo "${COSIGN_PRIVATE_KEY_B64}" | base64 -d > /tmp/cosign.key
+    - cosign sign --key /tmp/cosign.key --yes "${IMAGE_NAME}:${CI_COMMIT_SHA}"
+    - rm -f /tmp/cosign.key
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Manual job: build the customer-facing Magento reference image and push it
+# under <registry>/magento-reference:<tag>. Triggered from the GitLab UI via
+# "Run pipeline" with WITH_SAMPLEDATA=true / TAG_SUFFIX=-sampledata to produce
+# the demo image at magento-reference:2.4.8-sampledata. Default-branch only;
+# does not run on tags or MRs.
+build-magento-reference:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  variables:
+    WITH_SAMPLEDATA: "false"
+    TAG_SUFFIX: ""
+    MAGENTO_VERSION: "2.4.8"
+  timeout: 2h
+  script:
+    - |
+      mkdir -p /kaniko/.docker
+      ENCODED=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$ENCODED" > /kaniko/.docker/config.json
+    - /kaniko/executor
+      --context ${CI_PROJECT_DIR}/magento-test-image
+      --dockerfile ${CI_PROJECT_DIR}/magento-test-image/Dockerfile
+      --build-arg WITH_SAMPLEDATA=${WITH_SAMPLEDATA}
+      --destination ${IMAGE_NAME}/magento-reference:${MAGENTO_VERSION}${TAG_SUFFIX}
+      --cache=true
+      --cache-repo=${IMAGE_NAME}/magento-reference/cache
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  allow_failure: true
+
+# ── Release (tag pipeline only) ──────────────────────────────────
+
+tag-image:
+  stage: release
+  image: alpine:3.21
+  variables:
+    GIT_STRATEGY: none
+    CRANE_VERSION: "0.20.3"
+  script:
+    - apk add --no-cache curl
+    - curl -sSfL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | tar xz -C /usr/local/bin crane
+    - |
+      crane auth login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+      echo "Waiting for ${IMAGE_NAME}:${CI_COMMIT_SHA} to be available..."
+      ATTEMPTS=0
+      MAX_ATTEMPTS=60
+      while ! crane manifest "${IMAGE_NAME}:${CI_COMMIT_SHA}" > /dev/null 2>&1; do
+        ATTEMPTS=$((ATTEMPTS + 1))
+        if [ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]; then
+          echo "ERROR: SHA image not found after ${MAX_ATTEMPTS} attempts (15 minutes). Branch pipeline may have failed."
+          exit 1
+        fi
+        echo "Attempt ${ATTEMPTS}/${MAX_ATTEMPTS}: SHA image not yet available, retrying in 15s..."
+        sleep 15
+      done
+      echo "Tagging ${IMAGE_NAME}:${CI_COMMIT_SHA} as ${CI_COMMIT_TAG}"
+      crane tag "${IMAGE_NAME}:${CI_COMMIT_SHA}" "${CI_COMMIT_TAG}"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+helm-push:
+  stage: release
+  image:
+    name: alpine/helm:3.17.0
+    entrypoint: [""]
+  before_script:
+    - helm registry login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    # Guard against a tag-vs-Chart.yaml drift: a `v0.1.1` tag pushed
+    # without bumping Chart.yaml would silently re-package as 0.1.0
+    # and overwrite the previous release. Fail loud.
+    - CHART_VERSION=$(awk '/^version:/ {print $2; exit}' charts/mage-operator/Chart.yaml)
+    - TAG_VERSION="${CI_COMMIT_TAG#v}"
+    - |
+      if [ "$CHART_VERSION" != "$TAG_VERSION" ]; then
+        echo "ERROR: Chart.yaml version ($CHART_VERSION) does not match git tag ($CI_COMMIT_TAG → $TAG_VERSION)"
+        exit 1
+      fi
+    - helm package charts/mage-operator
+    - helm push mage-operator-*.tgz oci://${CI_REGISTRY_IMAGE}/charts
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+# Sign the just-pushed chart with the same cosign key the operator
+# image is signed with. The chart version is derived from the git tag
+# (helm-push enforces tag↔Chart.yaml equality, so this matches what
+# was just pushed). cosign signs at the manifest digest level and is
+# mediaType-agnostic, so the same key + verify command shape that
+# works for the image works for the Helm OCI chart artifact.
+sign-chart:
+  stage: release
+  image: alpine:3.21
+  variables:
+    GIT_STRATEGY: none
+    COSIGN_VERSION: "2.6.2"
+  needs:
+    - job: helm-push
+  script:
+    - apk add --no-cache curl
+    - curl -sSfL -o /usr/local/bin/cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+    - chmod +x /usr/local/bin/cosign
+    - |
+      mkdir -p "$HOME/.docker"
+      ENCODED=$(printf '%s:%s' "${CI_REGISTRY_USER}" "${CI_REGISTRY_PASSWORD}" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$CI_REGISTRY" "$ENCODED" > "$HOME/.docker/config.json"
+    - echo "${COSIGN_PRIVATE_KEY_B64}" | base64 -d > /tmp/cosign.key
+    - CHART_VERSION="${CI_COMMIT_TAG#v}"
+    - cosign sign --key /tmp/cosign.key --yes "${CI_REGISTRY_IMAGE}/charts/mage-operator:${CHART_VERSION}"
+    - rm -f /tmp/cosign.key
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+
+create-release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:v0.24.0
+  needs:
+    - job: tag-image
+    - job: helm-push
+    - job: sign-chart
+  script:
+    - |
+      release-cli create \
+        --name "${CI_COMMIT_TAG}" \
+        --tag-name "${CI_COMMIT_TAG}" \
+        --description "Container image: ${IMAGE_NAME}:${CI_COMMIT_TAG}" \
+        --assets-link "{\"name\":\"Container Image\",\"url\":\"https://gitlab.aknostic.com/aknostic/mage-operator/container_registry\",\"link_type\":\"image\"}"
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/

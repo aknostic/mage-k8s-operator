@@ -1,0 +1,10 @@
+# Per-store namespace. mage-operator treats one namespace as one shop —
+# resources inside share a simple `store-*` naming convention and
+# multi-shop deployments scale by namespace, not by name prefixing.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    app.kubernetes.io/name: mage-operator
+    app.kubernetes.io/managed-by: kustomize

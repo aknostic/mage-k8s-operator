@@ -1,0 +1,171 @@
+apiVersion: mage.aknostic.com/v1alpha1
+kind: MageStore
+metadata:
+  name: store
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: mage-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Reference image built locally from `magento-test-image/` per
+  # docs/image-contract.md. Production deployments replace this with a
+  # customer-owned image that honors the same contract.
+  image:
+    repository: mage-operator/magento-reference
+    tag: "2.4.8"
+  # Workloads: three-Deployment shape exercising Session 2's split.
+  # frontend always materialises; admin and api are optional. When
+  # admin/api are unset, /admin /rest /graphql paths in the Ingress
+  # fall through to <store>-frontend (ADR 006). With them declared
+  # below, those paths route to dedicated <store>-admin / <store>-api
+  # Deployments, isolating admin / API traffic from storefront load.
+  # Same image across all three; only resource profiles differ in
+  # production. See ADR 006 for naming and Ingress routing.
+  workloads:
+    frontend:
+      replicas: 1
+    admin:
+      replicas: 1
+    api:
+      replicas: 1
+  # Database: inline mode per ADR 004. The operator creates a MariaDB
+  # CR (named `store-mariadb`) with an ownerReference back to this
+  # MageStore, so deleting the MageStore deletes the database.
+  # mariadb-operator generates the root-password Secret itself
+  # (`store-mariadb-root`, key `root-password`). Defaults: MariaDB
+  # 11.4 (Magento 2.4.8's supported version), 1Gi PVC on the cluster's
+  # default StorageClass. Shared clusters or production sizing should
+  # use `mariaDbRef`; managed cloud databases use `external`
+  # (see docs/internals/adr/004-seeded-but-extractable-dependencies.md).
+  database:
+    mariaDb: {}
+  # Search: inline mode per ADR 004. The operator creates an
+  # OpenSearchCluster CR (named `store-opensearch`) with an
+  # ownerReference back to this MageStore, so deleting the MageStore
+  # deletes the cluster. Defaults are tuned for Magento 2.4.x
+  # in-cluster deployments (plain HTTP, single-node, version 2.19.2,
+  # security plugin disabled). Multi-tenant or shared-cluster
+  # deployments should use `opensearchRef` instead.
+  search:
+    openSearch: {}
+  # Cache: inline mode per ADR 004 / 009. The operator manages the
+  # cache StatefulSet directly — no upstream Redis/Valkey operator
+  # dependency. Topology: replicas=1 → bare single-instance Valkey
+  # StatefulSet (dev default); replicas=3/5/7 → Sentinel HA with
+  # ordinal-aware replicaof bootstrap and a separate Sentinel
+  # Deployment (production). Magento-issue #39224 forces Sentinel
+  # over Cluster mode; Cluster mode breaks cache-tag DELs with
+  # CROSSSLOT errors. The CRD field stays `redis` because Magento
+  # and the image contract speak Redis (wire-compat); the in-cluster
+  # image is valkey/valkey:8-alpine. Online resize between replica
+  # values is not supported in v0.3.0 — recreate the cache to
+  # change topology. Production sizing or features outside this
+  # envelope: `redisRef` (point at any third-party Redis/Valkey
+  # operator's Service) or `external` (managed cloud endpoint).
+  # See docs/internals/adr/009-cache-topology-and-operator-choice.md.
+  cache:
+    redis:
+      replicas: 1
+  # Queue: inline mode per ADR 004. The operator creates a
+  # RabbitmqCluster CR (named `store-rabbitmq`, group rabbitmq.com)
+  # with an ownerReference back to this MageStore. rabbitmq-cluster-
+  # operator auto-generates the default-user Secret and publishes its
+  # coordinates on Status.DefaultUser.SecretReference (self-
+  # describing). Defaults: single-replica, 10Gi persistence. Managed
+  # AMQP (Amazon MQ / CloudAMQP) uses `external`; shared brokers or
+  # HA-tuned clusters use `rabbitMqRef`. Queue is optional overall —
+  # omit this block to run Magento in synchronous-processing mode.
+  # See docs/internals/adr/004-seeded-but-extractable-dependencies.md.
+  queue:
+    rabbitMq: {}
+  # Consumers: per-consumer Deployment fan-out over the canonical
+  # Magento 2.4.8 list (see internal/magento/consumers.go). Each
+  # consumer runs as replicas: 1 with terminationGracePeriodSeconds:
+  # 60 — Magento consumers don't handle SIGTERM cleanly (see
+  # CLAUDE.md). Requires spec.queue; surfaces
+  # ConsumersReady=False, Reason=QueueNotConfigured otherwise.
+  # Per-consumer resource overrides via spec.consumers.overrides.
+  consumers:
+    enabled: true
+  # Cron: per-group CronJob fan-out (default, index, consumers,
+  # staging, catalog_event). Schedules default to `* * * * *`;
+  # `index` gets a 2Gi memory limit for reindex; the rest share a
+  # cautious 512Mi. Override via spec.cron.overrides[<group>];
+  # `disabled: true` skips a group entirely.
+  cron:
+    enabled: true
+  # Media: default emptyDir scratch mount at /app/pub/media. Production
+  # deployments set spec.media.s3 (recommended) or spec.media.pvc
+  # (dev/test only — RWX Magento pub/media is known to corrupt at
+  # scale; see CLAUDE.md).
+  #
+  # Varnish: enabled in the default demo, exercising the operator-
+  # generated default VCL path. With `vclConfigMapRef` unset, the
+  # operator materialises a `<store>-varnish-vcl` ConfigMap from
+  # internal/magento/vcl.go's GenerateDefaultVCL — single backend
+  # fronting <store>-frontend:8080, /admin /rest /graphql bypass,
+  # 1h fallback TTL. Multi-store shops with `spec.stores` set
+  # automatically get the ADR-007 hash_data(req.http.host) snippet
+  # embedded in the generated body. Custom VCL: set
+  # `vclConfigMapRef: {name: <your-cm>}` and the operator uses it
+  # as-is (key `default.vcl`).
+  varnish:
+    enabled: true
+  # Bootstrap: operator runs `bin/magento setup:install` as a one-shot
+  # owned Job on first reconcile and flips the StoreInstalled condition
+  # when it completes. Admin password defaults to an operator-generated
+  # random value stored in `store-admin` (key `password`); pass
+  # `passwordSecretRef` to bring your own. See ADR 005 for why this is
+  # a Job rather than an initContainer, and the `internal/controller/
+  # ensure_bootstrap.go` header comment for the install script details.
+  # Stores: multi-store / multi-host deployment. Each entry represents
+  # a website (HTTP Host → MAGE_RUN_CODE mapping) and its sub-stores.
+  # type: website entries use Magento's actual website code; the sample
+  # uses 'base' because that is Magento's built-in default-website code
+  # (not 'default'; 'default' is the default store-view code inside a
+  # website). Optional; omit for single-host deployments without
+  # hostname routing.
+  #
+  # stores:
+  #   - host: shop.example.com
+  #     code: base           # Magento's built-in default-website code.
+  #                          # type: store_view uses code: default (the
+  #                          # default store view inside the base website).
+  #     type: website
+  bootstrap:
+    admin:
+      email: changeme@example.com
+  # routing: gateway-layer config. The operator supports public-edge
+  # HTTPS via spec.routing.tls. When unset, the operator emits HTTP-only (port
+  # 80). To enable HTTPS you must also set spec.stores — TLS listeners
+  # need SNI hostnames; the operator rejects TLS-without-stores with
+  # Ready=False, Reason=TLSRequiresStoreHosts.
+  #
+  # Option A — cert-manager-managed certificates (recommended):
+  # cert-manager 1.14+ watches the Gateway for the annotation the
+  # operator adds, provisions a Certificate per spec.stores[].host
+  # into a `<store>-gateway-tls-<host-slug>` Secret, and handles
+  # renewal. Requires cert-manager + a ClusterIssuer (or Issuer)
+  # pre-installed; see docs/prerequisites.md and
+  # docs/quickstart.md#enabling-tls.
+  #
+  #   routing:
+  #     tls:
+  #       issuerRef:
+  #         kind: ClusterIssuer        # or Issuer for namespace-scoped
+  #         name: letsencrypt-prod     # name of your ClusterIssuer/Issuer
+  #
+  # Option B — bring-your-own certificate:
+  # Pre-create a kubernetes.io/tls Secret in the same namespace with
+  # tls.crt + tls.key. For multi-store deployments the cert must cover
+  # every spec.stores[].host (SAN or wildcard). The operator does not
+  # inspect cert contents — misconfig surfaces as Envoy listener
+  # errors on `kubectl describe gateway <store>-gateway`.
+  #
+  #   routing:
+  #     tls:
+  #       certificateSecretRef:
+  #         name: my-prebuilt-tls      # Secret in the same namespace
+  #
+  # See docs/magestore-reference.md#specroutingtls for the full field
+  # reference and trust-model notes.

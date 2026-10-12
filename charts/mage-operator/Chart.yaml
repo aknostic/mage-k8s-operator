@@ -1,0 +1,31 @@
+apiVersion: v2
+name: mage-operator
+description: Kubernetes operator for Magento / Adobe Commerce / Mage-OS
+type: application
+version: 0.6.4
+appVersion: "v0.6.4"
+kubeVersion: ">=1.26.0"
+keywords:
+  - magento
+  - mage-os
+  - adobe-commerce
+  - operator
+home: https://gitlab.aknostic.com/aknostic/mage-operator
+sources:
+  - https://gitlab.aknostic.com/aknostic/mage-operator
+maintainers:
+  - name: Aknostic
+    url: https://aknostic.com
+annotations:
+  artifacthub.io/operator: "true"
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/crds: |
+    - kind: MageStore
+      version: v1alpha1
+      name: magestores.mage.aknostic.com
+      description: Declarative Magento deployment with managed database, cache, search and message queue references
+  artifacthub.io/links: |
+    - name: source
+      url: https://gitlab.aknostic.com/aknostic/mage-operator
+    - name: issues
+      url: https://gitlab.aknostic.com/aknostic/mage-operator/-/issues

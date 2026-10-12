@@ -1,0 +1,2711 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: magestores.mage.aknostic.com
+spec:
+  group: mage.aknostic.com
+  names:
+    kind: MageStore
+    listKind: MageStoreList
+    plural: magestores
+    shortNames:
+    - ms
+    singular: magestore
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.image.repository
+      name: Image
+      type: string
+    - jsonPath: .spec.image.tag
+      name: Tag
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: MageStore is the Schema for the magestores API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of MageStore
+            properties:
+              bootstrap:
+                description: |-
+                  bootstrap configures the one-shot `setup:install` step the operator
+                  runs against a fresh store. When unset, the operator does not invoke
+                  setup:install and the workload rollout proceeds as soon as the
+                  dependency chain (database, search, secrets) is ready — appropriate
+                  only for stores pointing at a pre-bootstrapped database. Every
+                  fresh store needs this field set. See
+                  `internal/controller/ensure_bootstrap.go` for the one-shot semantics.
+                properties:
+                  admin:
+                    description: |-
+                      admin is the Magento administrator account setup:install will create.
+                      Required whenever `spec.bootstrap` is set — without an admin identity
+                      the install command has nothing to write.
+                    properties:
+                      backendFrontname:
+                        description: |-
+                          backendFrontname is the URL path segment under which Magento's
+                          admin panel is served. Maps to setup:install's
+                          `--backend-frontname` flag. When unset, the operator generates
+                          a 16-character random URL-safe string once at first bootstrap
+                          and persists it in the `<store>-admin` Secret under key
+                          `backendFrontname` (also writes a convenience `adminUrl` key
+                          holding the full `https://<host>/<frontname>/` URL). For
+                          existing stores upgraded from v0.6.x — detected by an existing
+                          `<store>-admin` Secret with no `backendFrontname` key — the
+                          operator defaults to the literal string `admin` to preserve
+                          existing bookmarks per the ADR 014 upgrade-safety rule.
+                          Subsequent reconciles read the value from the Secret; the
+                          operator does NOT rotate it on spec change once persisted —
+                          rotation is documented as redeploy + manual config:set.
+                        pattern: ^[a-zA-Z0-9_-]{4,32}$
+                        type: string
+                      disableTFA:
+                        description: |-
+                          disableTFA opts out of two-factor authentication after
+                          setup:install. When true, bootstrap appends:
+                            bin/magento config:set twofactorauth/general/enable 0
+                            bin/magento module:disable Magento_TwoFactorAuth Magento_AdminAdobeImsTwoFactorAuth
+                            bin/magento setup:upgrade
+                          Production stores with SMTP configured (spec.smtp set) leave
+                          this false and use real TFA enrolment via email. Demo manifests
+                          without an SMTP relay set this true to keep admin login working.
+                        type: boolean
+                      email:
+                        description: |-
+                          email is the initial admin user's email. Required. Must be a valid
+                          address; the operator does not otherwise constrain the domain
+                          because trans_email identity rewrite handles sender-verification
+                          concerns. Used both as the admin contact address and as the
+                          setup:install `--admin-email` argument.
+                        minLength: 3
+                        pattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+                        type: string
+                      firstName:
+                        default: Admin
+                        description: firstName maps to setup:install's `--admin-firstname`.
+                        type: string
+                      lastName:
+                        default: User
+                        description: lastName maps to setup:install's `--admin-lastname`.
+                        type: string
+                      passwordSecretRef:
+                        description: |-
+                          passwordSecretRef points at a user-managed Secret whose `key`
+                          (default `password`) contains the initial admin password. Leave
+                          unset to have the operator generate a 20-character random password
+                          once and store it in `<store>-admin` (key `password`). Password is
+                          write-once — rotating it requires a bin/magento admin:user:unlock
+                          flow, not a CRD edit. The operator does not watch this Secret for
+                          changes post-install.
+                        properties:
+                          key:
+                            default: password
+                            description: key defaults to "password" when unset.
+                            type: string
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      username:
+                        default: admin
+                        description: username maps to setup:install's `--admin-user`.
+                        type: string
+                    required:
+                    - email
+                    type: object
+                required:
+                - admin
+                type: object
+              cache:
+                description: |-
+                  cache configures the Redis-protocol backend Magento uses for its
+                  three logical stores (default cache, page cache, session storage).
+                  Discriminated union per ADR 004: inline (`redis`, operator manages
+                  a Valkey StatefulSet directly per ADR 009 — single-instance for
+                  dev, Sentinel HA for production), reference (`redisRef`, points
+                  at an admin-provisioned Service), or `external` (unmanaged
+                  endpoint — e.g. ElastiCache / Memorystore). Field name stays
+                  `redis`/`redisRef` even though the inline image is Valkey,
+                  because wire-compat means the user-visible concept is Redis.
+                properties:
+                  external:
+                    description: |-
+                      external is an unmanaged Redis-protocol endpoint — typically a
+                      managed cloud service (ElastiCache, Memorystore, Upstash, Redis
+                      Cloud). The operator emits host/port/password straight into the
+                      config Secret; no CR is created or watched. The user is
+                      responsible for the cache's provisioning, sizing, and failover.
+                    properties:
+                      host:
+                        description: |-
+                          host is the Redis-protocol hostname (or address) the image
+                          connects to. No protocol prefix, no trailing port — use `port`.
+                        minLength: 1
+                        type: string
+                      passwordSecretRef:
+                        description: |-
+                          passwordSecretRef is an optional reference to a user-managed
+                          Secret carrying the Redis AUTH password. Leave unset for
+                          password-less endpoints (many dev-mode Redis/ElastiCache
+                          deployments skip auth; the operator surfaces that cleanly by
+                          emitting no MAGENTO_REDIS_PASSWORD env var). When set, the
+                          Secret's key (default `password`) is read verbatim and
+                          surfaces a CacheReady=False (CredentialSecretMissing /
+                          CredentialKeyEmpty) condition if absent or empty.
+                        properties:
+                          key:
+                            default: password
+                            description: key defaults to "password" when unset.
+                            type: string
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      port:
+                        default: 6379
+                        description: port overrides the default Redis-protocol port.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                    required:
+                    - host
+                    type: object
+                  redis:
+                    description: |-
+                      redis asks the operator to manage the cache directly via a
+                      Valkey StatefulSet (image valkey/valkey:8-alpine) with
+                      ownerReferences back to this MageStore — no upstream Redis or
+                      Valkey operator dependency. Topology selected by
+                      `redis.replicas`: 1 for single-instance dev, 3 / 5 / 7 for
+                      Sentinel HA with replicaof bootstrap and a separate Sentinel
+                      Deployment. See ADR 009 for the topology and Sentinel bootstrap
+                      rationale.
+                    properties:
+                      replicas:
+                        default: 1
+                        description: |-
+                          replicas selects the cache topology. 1 = single-instance bare
+                          StatefulSet (dev sizing); 3 / 5 / 7 = Sentinel HA with ordinal-
+                          aware `replicaof` bootstrap and a separate Sentinel Deployment.
+                          Quorum is (N/2)+1, hard-coded — Magento doesn't need a knob here.
+
+                          Within-topology resize (e.g. 3 → 5 in Sentinel HA) is online:
+                          same StatefulSet, Sentinel auto-discovers new replicas, quorum
+                          recalculates. No special handling required.
+
+                          Cross-topology changes (1 ↔ 3+) are destructive and require
+                          explicit opt-in: edit replicas AND set the annotation
+                          `mage.aknostic.com/cache-topology-change: "approved"` on the
+                          MageStore. The operator deletes the existing cache resources and
+                          materialises the new topology fresh — cache is regenerable, but
+                          any sessions stored in Redis are lost. Without the annotation,
+                          the operator refuses the transition and surfaces
+                          `CacheReady=False, Reason=TopologyChangeRequiresApproval` with
+                          the supported workflow in the message. See ADR 009 §"What this
+                          doesn't change."
+                        enum:
+                        - 1
+                        - 3
+                        - 5
+                        - 7
+                        format: int32
+                        type: integer
+                      resources:
+                        description: |-
+                          resources overrides the Valkey container's resource
+                          requests/limits. Default (requests 50m / 64Mi, limits 256Mi
+                          memory) is dev-test-sized; production values belong on a
+                          separately-managed cache via `redisRef` or `external`.
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This field depends on the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                    type: object
+                  redisRef:
+                    description: |-
+                      redisRef points at an admin-provisioned cache in the same
+                      namespace via its front-door Service. The operator emits
+                      `MAGENTO_REDIS_HOST` from the Service name and reads the
+                      password from a conventional `<service-name>` Secret (key
+                      `password`). Topology and operator choice are the admin's
+                      concern — the operator stays out of the way. Use this mode for
+                      any third-party Redis or Valkey operator (SAP, OT-CONTAINER-KIT,
+                      upstream valkey-io once it ships v1) that exposes a
+                      Redis-protocol Service. Pre-v0.3.0 manifests pointing at a
+                      hyperspike Valkey CR migrate to either inline mode or `external`.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of redis, redisRef, or external must be set
+                  rule: '(has(self.redis) ? 1 : 0) + (has(self.redisRef) ? 1 : 0)
+                    + (has(self.external) ? 1 : 0) == 1'
+              consumers:
+                description: |-
+                  consumers configures the Magento queue consumer Deployments
+                  (per-consumer `replicas: 1`, `terminationGracePeriodSeconds: 60`
+                  because Magento consumers don't handle SIGTERM cleanly — see
+                  CLAUDE.md architecture notes). Requires `spec.queue` to be set
+                  for the consumers to have anything to consume; surfaced as a
+                  runtime `ConsumersReady=False, Reason=QueueNotConfigured`
+                  condition rather than a CRD-level CEL rule, because `spec.queue`
+                  is optional at the CRD level and the runtime gate is more
+                  informative.
+                properties:
+                  enabled:
+                    description: |-
+                      enabled gates the entire consumer subsystem. When true, the
+                      operator materialises one Deployment per known consumer with
+                      baked-in per-consumer defaults. When false, no consumer
+                      Deployments exist regardless of `overrides` contents —
+                      overrides are preserved across toggles so tuning survives a
+                      temporary disable.
+                    type: boolean
+                  overrides:
+                    additionalProperties:
+                      description: |-
+                        ConsumerOverride is the tunable subset exposed per consumer. Kept
+                        small on purpose — the operator's baked-in defaults cover the
+                        common case, and growing this struct prematurely invites users to
+                        micro-manage things the operator should manage.
+                      properties:
+                        resources:
+                          description: |-
+                            resources overrides the consumer container's resource
+                            requests/limits. The operator's per-consumer defaults (tuned
+                            for average-sized catalogues) apply when unset. Frequently-
+                            tuned consumers: `product_action_attribute.update` (memory-
+                            hungry on million-SKU catalogues), `async.operations.all`
+                            (CPU-hungry on bulk-API-heavy stores).
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This field depends on the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
+                      type: object
+                    description: |-
+                      overrides tunes per-consumer settings. Key = the consumer name
+                      as published by `bin/magento queue:consumers:list`. Unknown
+                      keys (typos, renamed consumers, customer-specific additions
+                      not in the operator's known-good list) surface at reconcile
+                      time via `ConsumersReady=False,
+                      Reason=UnknownConsumerOverride` — not CRD-validation time,
+                      because CEL cannot validate map keys against an open set.
+                    type: object
+                required:
+                - enabled
+                type: object
+              cron:
+                description: |-
+                  cron configures the Magento per-group cron CronJobs. Each
+                  declared group runs as a separate CronJob invoking `bin/magento
+                  cron:run --group=<name>` with baked-in per-group schedule +
+                  resource defaults. See `internal/controller/ensure_cron.go`
+                  (Session 2+) for the known-group list.
+                properties:
+                  enabled:
+                    description: |-
+                      enabled gates the entire cron subsystem. When true, the
+                      operator materialises one CronJob per known group (minus any
+                      that a per-group override disables). When false, no CronJobs
+                      exist regardless of `overrides`.
+                    type: boolean
+                  overrides:
+                    additionalProperties:
+                      description: |-
+                        CronOverride exposes the per-group tunable surface. Ships with a
+                        `disabled` field from day one to cover stores that disable the
+                        default `index` group because they run an external indexing
+                        service, or that disable `consumers` because they drive consumers
+                        directly via `spec.consumers`.
+                      properties:
+                        disabled:
+                          description: |-
+                            disabled skips this group entirely when the parent
+                            `spec.cron.enabled` is true. Useful for stores using an
+                            external indexing service (disable `index`), for temporarily
+                            quieting a noisy group during maintenance, or for shops that
+                            drive consumers via `spec.consumers` rather than the
+                            `consumers` cron group.
+                          type: boolean
+                        resources:
+                          description: |-
+                            resources overrides the CronJob container's resource
+                            requests/limits. The operator's per-group defaults (cautious
+                            for `default`; 2Gi memory for `index`; moderate CPU for
+                            `consumers`) apply when unset.
+                          properties:
+                            claims:
+                              description: |-
+                                Claims lists the names of resources, defined in spec.resourceClaims,
+                                that are used by this container.
+
+                                This field depends on the
+                                DynamicResourceAllocation feature gate.
+
+                                This field is immutable. It can only be set for containers.
+                              items:
+                                description: ResourceClaim references one entry in
+                                  PodSpec.ResourceClaims.
+                                properties:
+                                  name:
+                                    description: |-
+                                      Name must match the name of one entry in pod.spec.resourceClaims of
+                                      the Pod where this field is used. It makes that resource available
+                                      inside a container.
+                                    type: string
+                                  request:
+                                    description: |-
+                                      Request is the name chosen for a request in the referenced claim.
+                                      If empty, everything from the claim is made available, otherwise
+                                      only the result of this request.
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                              type: array
+                              x-kubernetes-list-map-keys:
+                              - name
+                              x-kubernetes-list-type: map
+                            limits:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Limits describes the maximum amount of compute resources allowed.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                            requests:
+                              additionalProperties:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              description: |-
+                                Requests describes the minimum amount of compute resources required.
+                                If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                                otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                                More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                              type: object
+                          type: object
+                        schedule:
+                          description: |-
+                            schedule overrides the operator's baked-in cron expression
+                            for this group. Standard 5-field cron syntax (minute, hour,
+                            day-of-month, month, day-of-week). Example: `*/2 * * * *` for
+                            every two minutes.
+                          type: string
+                      type: object
+                    description: |-
+                      overrides tunes per-group settings (schedule, resources,
+                      disabled). Key = the cron group name as published by
+                      `bin/magento cron:run --help`. Unknown keys surface at
+                      reconcile time via `CronReady=False,
+                      Reason=UnknownCronGroupOverride`.
+                    type: object
+                required:
+                - enabled
+                type: object
+              database:
+                description: |-
+                  database configures the MySQL-protocol backend Magento talks to.
+                  Discriminated union per ADR 004: inline (`mariaDb`, operator
+                  provisions a MariaDB CR), reference (`mariaDbRef`, admin pre-creates
+                  the CR), or `external` (unmanaged endpoint — e.g. RDS / Cloud SQL).
+                properties:
+                  external:
+                    description: |-
+                      external is an unmanaged MySQL-protocol endpoint — typically a
+                      managed cloud service (RDS, Cloud SQL, Scaleway Managed DB). The
+                      operator emits host/port/credentials straight into the config
+                      Secret; no CR is created or watched. The user is responsible for
+                      the database's provisioning, backups, and upgrade lifecycle.
+                    properties:
+                      credentialsSecretRef:
+                        description: |-
+                          credentialsSecretRef points at a user-managed Secret containing
+                          the database credentials. The Secret MUST have keys `username`
+                          and `password`; the operator reads them verbatim and surfaces a
+                          DatabaseReady=False (CredentialSecretMissing / CredentialKeyEmpty)
+                          condition if either is absent. The Secret is not watched — rotate
+                          credentials out-of-band and trigger a reconcile.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      databaseName:
+                        default: magento
+                        description: |-
+                          databaseName is the MySQL schema Magento targets. Default is
+                          `magento`, which matches the inline and ref paths. Set this only
+                          when the managed database enforces a different naming convention.
+                        minLength: 1
+                        type: string
+                      host:
+                        description: |-
+                          host is the MySQL-protocol hostname (or address) the image
+                          connects to. No protocol prefix, no trailing port — use `port`.
+                        minLength: 1
+                        type: string
+                      port:
+                        default: 3306
+                        description: port overrides the default MySQL-protocol port.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                    required:
+                    - credentialsSecretRef
+                    - host
+                    type: object
+                  mariaDb:
+                    description: |-
+                      mariaDb asks the operator to provision a MariaDB CR inline, with
+                      an ownerReference back to this MageStore. Deleting the MageStore
+                      deletes the database. Tuned for Magento 2.4.x in-cluster deployments
+                      (version 11.4, 1Gi PVC, operator-generated root password).
+                    properties:
+                      resources:
+                        description: |-
+                          resources overrides the MariaDB container's resource
+                          requests/limits. Default (requests 100m / 256Mi, limits 512Mi
+                          memory) is dev-test-sized; production values belong on a
+                          separately-managed CR via `mariaDbRef`.
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This field depends on the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                      storageSize:
+                        default: 1Gi
+                        description: |-
+                          storageSize is the PVC size for the MariaDB StatefulSet. Default
+                          is 1Gi — enough for a Magento 2.4.8 database with a few thousand
+                          products, not enough for a catalogue with millions of SKUs plus
+                          order history. Graduate to `mariaDbRef` when sizing gets real.
+                        type: string
+                      version:
+                        default: "11.4"
+                        description: |-
+                          version pins the MariaDB image tag. Magento 2.4.8's RDBMS support
+                          matrix lists MariaDB 10.2-10.6 and 11.4; the mariadb-operator
+                          default (currently 11.8) falls outside that set. We default to
+                          11.4 so `setup:install`'s version check passes. Must be a tag
+                          present on the upstream image (`docker-registry1.mariadb.com/
+                          library/mariadb:<tag>`).
+                        type: string
+                    type: object
+                  mariaDbRef:
+                    description: |-
+                      mariaDbRef names an externally-managed MariaDB CR (group
+                      k8s.mariadb.com, version v1alpha1). The operator watches the CR
+                      but does not own it; deleting the MageStore leaves the database
+                      intact. Use this mode for shared clusters or when a dedicated
+                      stateful-platform team owns the database lifecycle.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of mariaDb, mariaDbRef, or external must be
+                    set
+                  rule: '(has(self.mariaDb) ? 1 : 0) + (has(self.mariaDbRef) ? 1 :
+                    0) + (has(self.external) ? 1 : 0) == 1'
+              image:
+                description: |-
+                  image selects the Magento container image. The image MUST include
+                  ECE-Tools (magento/ece-tools); this is validated at reconcile time.
+                properties:
+                  repository:
+                    minLength: 1
+                    type: string
+                  tag:
+                    minLength: 1
+                    type: string
+                required:
+                - repository
+                - tag
+                type: object
+              media:
+                description: |-
+                  media configures the object-storage backend for Magento's
+                  pub/media directory (product images, generated thumbnails,
+                  wysiwyg uploads). Two-sibling ADR-004 union: `s3` for S3-
+                  compatible object storage (the recommended prod path) or
+                  `pvc` for an operator-provisioned PersistentVolumeClaim
+                  (dev/test only — ReadWriteMany against Magento's pub/media
+                  is known to corrupt at scale per CLAUDE.md). When unset, the
+                  operator mounts an emptyDir at pub/media — ephemeral, fine
+                  for demos, never for production.
+                properties:
+                  emptyDir:
+                    description: |-
+                      emptyDir is per-pod scratch. Marker struct, reserved for future
+                      tuning fields (sizeLimit, medium).
+                    type: object
+                  pvc:
+                    description: |-
+                      pvc configures a ReadWriteOnce PVC the operator creates and
+                      mounts at pub/media on each workload Deployment that needs
+                      media access. Known issue: the workload split (frontend /
+                      admin / api) would require ReadWriteMany for consistent
+                      media across Deployments, and RWX Magento pub/media is known
+                      to corrupt at scale. Dev/test only — production stores
+                      should use `s3`.
+                    properties:
+                      size:
+                        default: 10Gi
+                        description: |-
+                          size is the PVC's requested capacity. Default 10Gi covers a
+                          modest-catalogue demo; stores with image-heavy catalogues
+                          should set this explicitly or graduate to `s3`. Must be a
+                          valid Kubernetes resource.Quantity string (e.g. `10Gi`,
+                          `100Gi`, `1Ti`).
+                        type: string
+                      storageClassName:
+                        description: |-
+                          storageClassName selects the StorageClass for the PVC.
+                          Leave unset to use the cluster's default StorageClass. Set
+                          explicitly for clusters with multiple StorageClasses where
+                          the default isn't the right choice (e.g., a cheap-slow class
+                          for media vs. a fast-SSD class for the database).
+                        type: string
+                    type: object
+                  s3:
+                    description: |-
+                      s3 configures an S3-compatible object-storage backend (AWS
+                      S3, Scaleway Object Storage, Wasabi, Minio, Cloudflare R2,
+                      ...). The operator threads bucket coordinates + credentials
+                      into the per-workload config Secret; the image's env.php
+                      wires Magento's remote storage driver from them. The bucket
+                      itself is not provisioned — users create it out-of-band.
+                    properties:
+                      bucket:
+                        description: |-
+                          bucket is the S3 bucket name. The operator does not create
+                          or delete the bucket; users provision it out-of-band.
+                        minLength: 1
+                        type: string
+                      credentialsSecretRef:
+                        description: |-
+                          credentialsSecretRef points at a user-managed Secret with
+                          keys `accessKeyId` and `secretAccessKey`. Schema matches the
+                          AWS SDK v2 default credential shape; buckets requiring IAM-
+                          role or anonymous access are not supported in Phase 1. If
+                          the Secret is absent or either key is empty, `ensureMedia`
+                          returns an error and the reconcile fails; the failure
+                          surfaces via `Ready=False` (no media-specific condition
+                          exists — media is a per-pod volume decision, not a
+                          rollout-gate condition; see `ensureMedia`'s doc-comment).
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      endpoint:
+                        description: |-
+                          endpoint is the S3-compatible endpoint URL (including
+                          protocol). Leave unset for AWS S3 — the SDK picks the
+                          regional endpoint from `region`. Set for non-AWS providers,
+                          e.g. `https://s3.fr-par.scw.cloud` (Scaleway) or
+                          `https://minio.example.com` (self-hosted Minio).
+                        type: string
+                      region:
+                        description: |-
+                          region is the AWS region (or provider-specific region tag)
+                          holding the bucket. Required by the AWS SDK v2 even for
+                          non-AWS endpoints — pass the provider's regional identifier.
+                        minLength: 1
+                        type: string
+                    required:
+                    - bucket
+                    - credentialsSecretRef
+                    - region
+                    type: object
+                  seedFromImage:
+                    description: |-
+                      seedFromImage populates the configured backend with the workload
+                      image's /app/pub/media-baked/* on initial install. Volume modes
+                      (emptyDir, pvc) seed via initContainer; S3 mode runs a one-shot
+                      Job (see ensureMediaSeed). Per ADR 011.
+                    type: boolean
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of emptyDir, pvc, or s3 must be set
+                  rule: '(has(self.emptyDir) ? 1 : 0) + (has(self.pvc) ? 1 : 0) +
+                    (has(self.s3) ? 1 : 0) == 1'
+              queue:
+                description: |-
+                  queue configures the AMQP message broker Magento uses for
+                  asynchronous work (queue consumers, bulk API, deferred index
+                  rebuilds). Discriminated union per ADR 004: inline (`rabbitMq`,
+                  operator provisions a RabbitmqCluster CR via rabbitmq-cluster-
+                  operator), reference (`rabbitMqRef`, admin pre-creates the CR),
+                  or `external` (unmanaged endpoint — e.g. Amazon MQ / CloudAMQP).
+                  Optional at the CRD level: a MageStore without a queue runs in
+                  Magento's synchronous-processing fallback, which is fine for dev
+                  and for storefronts that don't use bulk operations.
+                properties:
+                  external:
+                    description: |-
+                      external is an unmanaged AMQP endpoint — typically a managed
+                      cloud service (Amazon MQ, CloudAMQP, self-hosted RabbitMQ not
+                      operated by rabbitmq-cluster-operator). The operator emits
+                      host/port/vhost/username/password straight into the config
+                      Secret; no CR is created or watched.
+                    properties:
+                      credentialsSecretRef:
+                        description: |-
+                          credentialsSecretRef points at a user-managed Secret containing
+                          the AMQP credentials. The Secret MUST have keys `username` and
+                          `password`; the operator reads them verbatim and surfaces a
+                          QueueReady=False (CredentialSecretMissing / CredentialKeyEmpty)
+                          condition if either is absent. The Secret is not watched —
+                          rotate credentials out-of-band and trigger a reconcile. The key
+                          names match rabbitmq-cluster-operator's default-user Secret
+                          schema so a `credentialsSecretRef` pointed at a
+                          RabbitmqCluster-generated Secret works without translation.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      host:
+                        description: |-
+                          host is the AMQP hostname (or address) the image connects to.
+                          No protocol prefix, no trailing port — use `port`.
+                        minLength: 1
+                        type: string
+                      port:
+                        default: 5672
+                        description: port overrides the default AMQP port.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                      vhost:
+                        default: /
+                        description: |-
+                          vhost is the AMQP virtual host Magento publishes to. Default is
+                          "/" — the broker's implicit default vhost. Set this only when
+                          the managed broker enforces a named vhost convention.
+                        minLength: 1
+                        type: string
+                    required:
+                    - credentialsSecretRef
+                    - host
+                    type: object
+                  rabbitMq:
+                    description: |-
+                      rabbitMq asks the operator to provision a RabbitmqCluster CR
+                      inline (group rabbitmq.com, kind RabbitmqCluster) with an
+                      ownerReference back to this MageStore. Deleting the MageStore
+                      deletes the broker. rabbitmq-cluster-operator auto-generates
+                      the default-user Secret and publishes its coordinates on
+                      Status.DefaultUser.SecretReference — the cleanest credentials
+                      hand-off of the four composed operators.
+                    properties:
+                      resources:
+                        description: |-
+                          resources overrides the RabbitMQ container's resource
+                          requests/limits. Default (requests 100m / 256Mi, limits 512Mi
+                          memory) is dev-test-sized; production values belong on a
+                          separately-managed RabbitmqCluster via `rabbitMqRef`.
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This field depends on the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                    type: object
+                  rabbitMqRef:
+                    description: |-
+                      rabbitMqRef names an externally-managed RabbitmqCluster CR
+                      (group rabbitmq.com, kind RabbitmqCluster). The operator
+                      watches the CR but does not own it; deleting the MageStore
+                      leaves the broker intact. Use this mode for shared brokers or
+                      HA-tuned clusters that live outside a single MageStore's
+                      lifecycle.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of rabbitMq, rabbitMqRef, or external must
+                    be set
+                  rule: '(has(self.rabbitMq) ? 1 : 0) + (has(self.rabbitMqRef) ? 1
+                    : 0) + (has(self.external) ? 1 : 0) == 1'
+              routing:
+                description: |-
+                  routing configures Gateway-layer concerns: public-edge TLS
+                  (cert-manager-managed or BYO Secret), and Phase 2 follow-ons
+                  (gatewayRef, gatewayClassName). When unset, the operator emits
+                  the v0.4.x default — single HTTP listener on port 80, no TLS.
+                  See ADR 010 for the design and ADR 006's open-questions section
+                  for the deferred-fields trajectory.
+                properties:
+                  tls:
+                    description: |-
+                      tls configures public-edge TLS termination on the per-MageStore
+                      Gateway. When unset, the Gateway listens on HTTP/80 only
+                      (v0.4.x default). When set, the operator adds per-host HTTPS
+                      listeners on port 443 with `mode: Terminate` and references the
+                      cert Secret per the discriminated-union below. See ADR 010.
+                    properties:
+                      certificateSecretRef:
+                        description: |-
+                          certificateSecretRef points at a user-provided `kubernetes.io/tls`
+                          Secret in the same namespace as the MageStore. The Secret MUST
+                          contain `tls.crt` and `tls.key` keys; multi-store deployments
+                          require a SAN or wildcard cert covering every `spec.stores[].host`.
+                          Mutually exclusive with `issuerRef`.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      issuerRef:
+                        description: |-
+                          issuerRef points at a cert-manager Issuer or ClusterIssuer.
+                          Mutually exclusive with `certificateSecretRef`.
+                        properties:
+                          kind:
+                            description: |-
+                              kind is the cert-manager resource kind. Must be either
+                              `Issuer` (namespaced) or `ClusterIssuer` (cluster-wide).
+                            enum:
+                            - Issuer
+                            - ClusterIssuer
+                            type: string
+                          name:
+                            description: name is the Issuer or ClusterIssuer resource
+                              name.
+                            minLength: 1
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
+                    type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of issuerRef or certificateSecretRef must
+                        be set
+                      rule: '(has(self.issuerRef) ? 1 : 0) + (has(self.certificateSecretRef)
+                        ? 1 : 0) == 1'
+                type: object
+              search:
+                description: |-
+                  search configures the search backend. Magento 2.4.x hard-requires a
+                  reachable OpenSearch/Elasticsearch endpoint at `setup:install` time.
+                properties:
+                  external:
+                    description: |-
+                      external is an unmanaged OpenSearch/Elasticsearch endpoint —
+                      typically a managed cloud service (AWS OpenSearch Service, Bonsai,
+                      Elastic Cloud). The operator emits host/port/credentials straight
+                      into the config Secret; no CR is created or watched. The user is
+                      responsible for the cluster's provisioning, sizing, and upgrade
+                      lifecycle. Magento 2.4.x supports HTTP and HTTPS endpoints
+                      transparently — set `port` to match the managed endpoint's
+                      listener.
+                    properties:
+                      credentialsSecretRef:
+                        description: |-
+                          credentialsSecretRef is an optional reference to a user-managed
+                          Secret carrying basic-auth credentials. Leave unset for clusters
+                          without authentication (in-cluster Magento-only OpenSearch with
+                          the security plugin disabled — the inline-mode default — is the
+                          canonical no-auth case). When set, the Secret MUST have keys
+                          `username` and `password`; the operator emits
+                          MAGENTO_OPENSEARCH_USERNAME / MAGENTO_OPENSEARCH_PASSWORD env
+                          vars and the image consumes them via env.php's getenv(). Surfaces
+                          SearchReady=False (CredentialSecretMissing / CredentialKeyEmpty)
+                          when set but unresolvable.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      host:
+                        description: |-
+                          host is the OpenSearch hostname (or address) the image connects
+                          to. No protocol prefix, no trailing port — use `port`.
+                        minLength: 1
+                        type: string
+                      port:
+                        default: 9200
+                        description: |-
+                          port overrides the default OpenSearch HTTP port. AWS OpenSearch
+                          Service typically listens on 443; managed Bonsai endpoints commonly
+                          expose 9200; in-cluster OpenSearch uses 9200.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                    required:
+                    - host
+                    type: object
+                  openSearch:
+                    description: |-
+                      openSearch asks the operator to provision an OpenSearchCluster CR
+                      inline, with an ownerReference back to this MageStore. Deleting the
+                      MageStore deletes the cluster. Tuned for Magento 2.4.x in-cluster
+                      deployments (plain HTTP, single-node, version 2.19). Users needing
+                      fields outside this curated subset should graduate to opensearchRef.
+                    properties:
+                      jvmHeap:
+                        default: 512m
+                        description: |-
+                          jvmHeap is the -Xms and -Xmx value applied to the OpenSearch JVM.
+                          Rule of thumb: roughly half the container memory limit, capped at
+                          31g per Elastic/OpenSearch guidance.
+                        type: string
+                      replicas:
+                        default: 3
+                        description: |-
+                          replicas sizes the single node pool. The default is 3 because
+                          opensearch-k8s-operator's bootstrap-pod flow races badly against
+                          single-replica startup: the main pod's TCP readiness probe passes
+                          before cluster formation completes, the upstream operator marks
+                          `Status.Initialized=true`, deletes the bootstrap pod, and the
+                          single remaining node deadlocks on `cluster_manager_not_discovered`
+                          because the bootstrap pod it was configured to join is gone. With
+                          >= 3 main replicas, a quorum survives the bootstrap departure and
+                          the cluster reaches green. Setting replicas=1 is supported for
+                          aggressive dev/test resource savings but known to be fragile;
+                          prefer opensearchRef with a single-node OpenSearchCluster CR where
+                          you can control discovery.type.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      resources:
+                        description: |-
+                          resources overrides container resource requests/limits. Default:
+                          requests 250m / 768Mi, limits 1500Mi memory. CPU limits left unset
+                          (CFS throttling is rarely what OpenSearch wants).
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This field depends on the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                      version:
+                        default: 2.19.2
+                        description: |-
+                          version pins the OpenSearch server image tag. Magento 2.4.x is not
+                          certified against OpenSearch 3.x — the default stays on the 2.x
+                          compatibility track. Must be a full semver tag that exists on the
+                          upstream image (`docker.io/opensearchproject/opensearch:<tag>`);
+                          bare minor series like "2.19" are not valid image tags.
+                        type: string
+                    type: object
+                  opensearchRef:
+                    description: |-
+                      opensearchRef names an externally-managed OpenSearchCluster CR
+                      (group opensearch.org, version v1). The operator watches the CR
+                      but does not own it; deleting the MageStore leaves the cluster
+                      intact. Admins typically use this mode for shared clusters or for
+                      production deployments where the stateful-platform team owns the
+                      search cluster lifecycle.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of openSearch, opensearchRef, or external must
+                    be set
+                  rule: '(has(self.openSearch) ? 1 : 0) + (has(self.opensearchRef)
+                    ? 1 : 0) + (has(self.external) ? 1 : 0) == 1'
+              security:
+                description: |-
+                  security carries operator-wide security defaults — NetworkPolicy
+                  generation, workload pod/container securityContext, future
+                  security knobs. Absent → operator falls back to v0.6.x posture
+                  (no NetworkPolicies, no workload securityContext). Present →
+                  the sub-block defaults apply, modulated by the upgrade-safety
+                  rule (fresh stores get defaults; existing stores opt in
+                  explicitly). See ADR 014.
+
+                  Note: admin URL randomization (`AdminSpec.BackendFrontname`)
+                  lives on `AdminSpec` not here — it is a bootstrap-time install
+                  argument, not a reconcile-time policy. ADR 014 explains why.
+                properties:
+                  networkPolicies:
+                    description: |-
+                      networkPolicies controls per-MageStore NetworkPolicy generation
+                      (gap #1 of the v0.7.0 arc). When unset, no policies are
+                      generated. When set with `enabled: true`, the operator emits
+                      6-8 NetworkPolicies covering the documented communication graph
+                      (Internet → Gateway → Varnish; Varnish → workloads; workloads →
+                      resolved data tiers; consumers/cron same data-tier reach minus
+                      inbound HTTP; every pod → kube-dns; image-pull egress).
+                      Implementation lands in session 2/3 of the v0.7.0 arc — this
+                      field is CRD shape only as of v0.7.0 session 1.
+                    properties:
+                      additionalEgressCIDRs:
+                        description: |-
+                          additionalEgressCIDRs lists CIDRs the workload pods may egress
+                          to beyond the operator-resolved data tiers. Use for image
+                          registries, package mirrors, payment APIs, external SMTP
+                          relays. The operator does not inspect overlap with private
+                          ranges or the cluster pod CIDR — the user owns the safety of
+                          what is listed here.
+                        items:
+                          type: string
+                        type: array
+                      additionalIngressNamespaces:
+                        description: |-
+                          additionalIngressNamespaces lists namespaces whose pods may
+                          reach workload pods directly (bypassing Varnish). Use for
+                          monitoring scrapers, service meshes, CI sidecars. Each entry
+                          is a `LabelSelector` matched against namespace labels.
+                        items:
+                          description: |-
+                            A label selector is a label query over a set of resources. The result of matchLabels and
+                            matchExpressions are ANDed. An empty label selector matches all objects. A null
+                            label selector matches no objects.
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
+                              items:
+                                description: |-
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
+                                    type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        type: array
+                      enabled:
+                        description: |-
+                          enabled toggles NetworkPolicy generation. Operator-side
+                          upgrade-safety defaulting flips this to true for fresh stores
+                          (no `<store>-config` Secret yet) and leaves it at the
+                          user-set or zero value (effectively false) for existing
+                          stores. Existing stores opt in by setting `enabled: true`.
+                        type: boolean
+                    type: object
+                  workloadSecurityContext:
+                    description: |-
+                      workloadSecurityContext overrides the operator-emitted pod and
+                      container security context defaults applied to every workload
+                      PodTemplateSpec (frontend, admin, api, consumers, cron,
+                      bootstrap, smtp, mediaSeed, storeUrls, upgrade, varnish). When
+                      unset, no security context is applied — workload pods inherit
+                      cluster defaults (root by default). When set, operator defaults
+                      apply (`runAsNonRoot: true`, UID 1000, read-only root, ALL caps
+                      dropped, RuntimeDefault seccomp) and user-supplied fields merge
+                      on top. Implementation lands in session 2 of the v0.7.0 arc —
+                      this field is CRD shape only as of v0.7.0 session 1.
+                    properties:
+                      container:
+                        description: |-
+                          container is merged on top of the operator default
+                          SecurityContext applied to every workload container. Same
+                          field-level merge as `pod`.
+                        properties:
+                          allowPrivilegeEscalation:
+                            description: |-
+                              AllowPrivilegeEscalation controls whether a process can gain more
+                              privileges than its parent process. This bool directly controls if
+                              the no_new_privs flag will be set on the container process.
+                              AllowPrivilegeEscalation is true always when the container is:
+                              1) run as Privileged
+                              2) has CAP_SYS_ADMIN
+                              Note that this field cannot be set when spec.os.name is windows.
+                            type: boolean
+                          appArmorProfile:
+                            description: |-
+                              appArmorProfile is the AppArmor options to use by this container. If set, this profile
+                              overrides the pod's appArmorProfile.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            properties:
+                              localhostProfile:
+                                description: |-
+                                  localhostProfile indicates a profile loaded on the node that should be used.
+                                  The profile must be preconfigured on the node to work.
+                                  Must match the loaded name of the profile.
+                                  Must be set if and only if type is "Localhost".
+                                type: string
+                              type:
+                                description: |-
+                                  type indicates which kind of AppArmor profile will be applied.
+                                  Valid options are:
+                                    Localhost - a profile pre-loaded on the node.
+                                    RuntimeDefault - the container runtime's default profile.
+                                    Unconfined - no AppArmor enforcement.
+                                type: string
+                            required:
+                            - type
+                            type: object
+                          capabilities:
+                            description: |-
+                              The capabilities to add/drop when running containers.
+                              Defaults to the default set of capabilities granted by the container runtime.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            properties:
+                              add:
+                                description: Added capabilities
+                                items:
+                                  description: Capability represent POSIX capabilities
+                                    type
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                              drop:
+                                description: Removed capabilities
+                                items:
+                                  description: Capability represent POSIX capabilities
+                                    type
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            type: object
+                          privileged:
+                            description: |-
+                              Run container in privileged mode.
+                              Processes in privileged containers are essentially equivalent to root on the host.
+                              Defaults to false.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            type: boolean
+                          procMount:
+                            description: |-
+                              procMount denotes the type of proc mount to use for the containers.
+                              The default value is Default which uses the container runtime defaults for
+                              readonly paths and masked paths.
+                              This requires the ProcMountType feature flag to be enabled.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            type: string
+                          readOnlyRootFilesystem:
+                            description: |-
+                              Whether this container has a read-only root filesystem.
+                              Default is false.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            type: boolean
+                          runAsGroup:
+                            description: |-
+                              The GID to run the entrypoint of the container process.
+                              Uses runtime default if unset.
+                              May also be set in PodSecurityContext.  If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            format: int64
+                            type: integer
+                          runAsNonRoot:
+                            description: |-
+                              Indicates that the container must run as a non-root user.
+                              If true, the Kubelet will validate the image at runtime to ensure that it
+                              does not run as UID 0 (root) and fail to start the container if it does.
+                              If unset or false, no such validation will be performed.
+                              May also be set in PodSecurityContext.  If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence.
+                            type: boolean
+                          runAsUser:
+                            description: |-
+                              The UID to run the entrypoint of the container process.
+                              Defaults to user specified in image metadata if unspecified.
+                              May also be set in PodSecurityContext.  If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            format: int64
+                            type: integer
+                          seLinuxOptions:
+                            description: |-
+                              The SELinux context to be applied to the container.
+                              If unspecified, the container runtime will allocate a random SELinux context for each
+                              container.  May also be set in PodSecurityContext.  If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            properties:
+                              level:
+                                description: Level is SELinux level label that applies
+                                  to the container.
+                                type: string
+                              role:
+                                description: Role is a SELinux role label that applies
+                                  to the container.
+                                type: string
+                              type:
+                                description: Type is a SELinux type label that applies
+                                  to the container.
+                                type: string
+                              user:
+                                description: User is a SELinux user label that applies
+                                  to the container.
+                                type: string
+                            type: object
+                          seccompProfile:
+                            description: |-
+                              The seccomp options to use by this container. If seccomp options are
+                              provided at both the pod & container level, the container options
+                              override the pod options.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            properties:
+                              localhostProfile:
+                                description: |-
+                                  localhostProfile indicates a profile defined in a file on the node should be used.
+                                  The profile must be preconfigured on the node to work.
+                                  Must be a descending path, relative to the kubelet's configured seccomp profile location.
+                                  Must be set if type is "Localhost". Must NOT be set for any other type.
+                                type: string
+                              type:
+                                description: |-
+                                  type indicates which kind of seccomp profile will be applied.
+                                  Valid options are:
+
+                                  Localhost - a profile defined in a file on the node should be used.
+                                  RuntimeDefault - the container runtime default profile should be used.
+                                  Unconfined - no profile should be applied.
+                                type: string
+                            required:
+                            - type
+                            type: object
+                          windowsOptions:
+                            description: |-
+                              The Windows specific settings applied to all containers.
+                              If unspecified, the options from the PodSecurityContext will be used.
+                              If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.
+                              Note that this field cannot be set when spec.os.name is linux.
+                            properties:
+                              gmsaCredentialSpec:
+                                description: |-
+                                  GMSACredentialSpec is where the GMSA admission webhook
+                                  (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
+                                  GMSA credential spec named by the GMSACredentialSpecName field.
+                                type: string
+                              gmsaCredentialSpecName:
+                                description: GMSACredentialSpecName is the name of
+                                  the GMSA credential spec to use.
+                                type: string
+                              hostProcess:
+                                description: |-
+                                  HostProcess determines if a container should be run as a 'Host Process' container.
+                                  All of a Pod's containers must have the same effective HostProcess value
+                                  (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
+                                  In addition, if HostProcess is true then HostNetwork must also be set to true.
+                                type: boolean
+                              runAsUserName:
+                                description: |-
+                                  The UserName in Windows to run the entrypoint of the container process.
+                                  Defaults to the user specified in image metadata if unspecified.
+                                  May also be set in PodSecurityContext. If set in both SecurityContext and
+                                  PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                type: string
+                            type: object
+                        type: object
+                      pod:
+                        description: |-
+                          pod is merged on top of the operator default
+                          PodSecurityContext for every workload pod. User-set fields win
+                          at the field level; unspecified fields keep operator defaults.
+                        properties:
+                          appArmorProfile:
+                            description: |-
+                              appArmorProfile is the AppArmor options to use by the containers in this pod.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            properties:
+                              localhostProfile:
+                                description: |-
+                                  localhostProfile indicates a profile loaded on the node that should be used.
+                                  The profile must be preconfigured on the node to work.
+                                  Must match the loaded name of the profile.
+                                  Must be set if and only if type is "Localhost".
+                                type: string
+                              type:
+                                description: |-
+                                  type indicates which kind of AppArmor profile will be applied.
+                                  Valid options are:
+                                    Localhost - a profile pre-loaded on the node.
+                                    RuntimeDefault - the container runtime's default profile.
+                                    Unconfined - no AppArmor enforcement.
+                                type: string
+                            required:
+                            - type
+                            type: object
+                          fsGroup:
+                            description: |-
+                              A special supplemental group that applies to all containers in a pod.
+                              Some volume types allow the Kubelet to change the ownership of that volume
+                              to be owned by the pod:
+
+                              1. The owning GID will be the FSGroup
+                              2. The setgid bit is set (new files created in the volume will be owned by FSGroup)
+                              3. The permission bits are OR'd with rw-rw----
+
+                              If unset, the Kubelet will not modify the ownership and permissions of any volume.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            format: int64
+                            type: integer
+                          fsGroupChangePolicy:
+                            description: |-
+                              fsGroupChangePolicy defines behavior of changing ownership and permission of the volume
+                              before being exposed inside Pod. This field will only apply to
+                              volume types which support fsGroup based ownership(and permissions).
+                              It will have no effect on ephemeral volume types such as: secret, configmaps
+                              and emptydir.
+                              Valid values are "OnRootMismatch" and "Always". If not specified, "Always" is used.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            type: string
+                          runAsGroup:
+                            description: |-
+                              The GID to run the entrypoint of the container process.
+                              Uses runtime default if unset.
+                              May also be set in SecurityContext.  If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence
+                              for that container.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            format: int64
+                            type: integer
+                          runAsNonRoot:
+                            description: |-
+                              Indicates that the container must run as a non-root user.
+                              If true, the Kubelet will validate the image at runtime to ensure that it
+                              does not run as UID 0 (root) and fail to start the container if it does.
+                              If unset or false, no such validation will be performed.
+                              May also be set in SecurityContext.  If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence.
+                            type: boolean
+                          runAsUser:
+                            description: |-
+                              The UID to run the entrypoint of the container process.
+                              Defaults to user specified in image metadata if unspecified.
+                              May also be set in SecurityContext.  If set in both SecurityContext and
+                              PodSecurityContext, the value specified in SecurityContext takes precedence
+                              for that container.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            format: int64
+                            type: integer
+                          seLinuxChangePolicy:
+                            description: |-
+                              seLinuxChangePolicy defines how the container's SELinux label is applied to all volumes used by the Pod.
+                              It has no effect on nodes that do not support SELinux or to volumes does not support SELinux.
+                              Valid values are "MountOption" and "Recursive".
+
+                              "Recursive" means relabeling of all files on all Pod volumes by the container runtime.
+                              This may be slow for large volumes, but allows mixing privileged and unprivileged Pods sharing the same volume on the same node.
+
+                              "MountOption" mounts all eligible Pod volumes with `-o context` mount option.
+                              This requires all Pods that share the same volume to use the same SELinux label.
+                              It is not possible to share the same volume among privileged and unprivileged Pods.
+                              Eligible volumes are in-tree FibreChannel and iSCSI volumes, and all CSI volumes
+                              whose CSI driver announces SELinux support by setting spec.seLinuxMount: true in their
+                              CSIDriver instance. Other volumes are always re-labelled recursively.
+                              "MountOption" value is allowed only when SELinuxMount feature gate is enabled.
+
+                              If not specified and SELinuxMount feature gate is enabled, "MountOption" is used.
+                              If not specified and SELinuxMount feature gate is disabled, "MountOption" is used for ReadWriteOncePod volumes
+                              and "Recursive" for all other volumes.
+
+                              This field affects only Pods that have SELinux label set, either in PodSecurityContext or in SecurityContext of all containers.
+
+                              All Pods that use the same volume should use the same seLinuxChangePolicy, otherwise some pods can get stuck in ContainerCreating state.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            type: string
+                          seLinuxOptions:
+                            description: |-
+                              The SELinux context to be applied to all containers.
+                              If unspecified, the container runtime will allocate a random SELinux context for each
+                              container.  May also be set in SecurityContext.  If set in
+                              both SecurityContext and PodSecurityContext, the value specified in SecurityContext
+                              takes precedence for that container.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            properties:
+                              level:
+                                description: Level is SELinux level label that applies
+                                  to the container.
+                                type: string
+                              role:
+                                description: Role is a SELinux role label that applies
+                                  to the container.
+                                type: string
+                              type:
+                                description: Type is a SELinux type label that applies
+                                  to the container.
+                                type: string
+                              user:
+                                description: User is a SELinux user label that applies
+                                  to the container.
+                                type: string
+                            type: object
+                          seccompProfile:
+                            description: |-
+                              The seccomp options to use by the containers in this pod.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            properties:
+                              localhostProfile:
+                                description: |-
+                                  localhostProfile indicates a profile defined in a file on the node should be used.
+                                  The profile must be preconfigured on the node to work.
+                                  Must be a descending path, relative to the kubelet's configured seccomp profile location.
+                                  Must be set if type is "Localhost". Must NOT be set for any other type.
+                                type: string
+                              type:
+                                description: |-
+                                  type indicates which kind of seccomp profile will be applied.
+                                  Valid options are:
+
+                                  Localhost - a profile defined in a file on the node should be used.
+                                  RuntimeDefault - the container runtime default profile should be used.
+                                  Unconfined - no profile should be applied.
+                                type: string
+                            required:
+                            - type
+                            type: object
+                          supplementalGroups:
+                            description: |-
+                              A list of groups applied to the first process run in each container, in
+                              addition to the container's primary GID and fsGroup (if specified).  If
+                              the SupplementalGroupsPolicy feature is enabled, the
+                              supplementalGroupsPolicy field determines whether these are in addition
+                              to or instead of any group memberships defined in the container image.
+                              If unspecified, no additional groups are added, though group memberships
+                              defined in the container image may still be used, depending on the
+                              supplementalGroupsPolicy field.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            items:
+                              format: int64
+                              type: integer
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          supplementalGroupsPolicy:
+                            description: |-
+                              Defines how supplemental groups of the first container processes are calculated.
+                              Valid values are "Merge" and "Strict". If not specified, "Merge" is used.
+                              (Alpha) Using the field requires the SupplementalGroupsPolicy feature gate to be enabled
+                              and the container runtime must implement support for this feature.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            type: string
+                          sysctls:
+                            description: |-
+                              Sysctls hold a list of namespaced sysctls used for the pod. Pods with unsupported
+                              sysctls (by the container runtime) might fail to launch.
+                              Note that this field cannot be set when spec.os.name is windows.
+                            items:
+                              description: Sysctl defines a kernel parameter to be
+                                set
+                              properties:
+                                name:
+                                  description: Name of a property to set
+                                  type: string
+                                value:
+                                  description: Value of a property to set
+                                  type: string
+                              required:
+                              - name
+                              - value
+                              type: object
+                            type: array
+                            x-kubernetes-list-type: atomic
+                          windowsOptions:
+                            description: |-
+                              The Windows specific settings applied to all containers.
+                              If unspecified, the options within a container's SecurityContext will be used.
+                              If set in both SecurityContext and PodSecurityContext, the value specified in SecurityContext takes precedence.
+                              Note that this field cannot be set when spec.os.name is linux.
+                            properties:
+                              gmsaCredentialSpec:
+                                description: |-
+                                  GMSACredentialSpec is where the GMSA admission webhook
+                                  (https://github.com/kubernetes-sigs/windows-gmsa) inlines the contents of the
+                                  GMSA credential spec named by the GMSACredentialSpecName field.
+                                type: string
+                              gmsaCredentialSpecName:
+                                description: GMSACredentialSpecName is the name of
+                                  the GMSA credential spec to use.
+                                type: string
+                              hostProcess:
+                                description: |-
+                                  HostProcess determines if a container should be run as a 'Host Process' container.
+                                  All of a Pod's containers must have the same effective HostProcess value
+                                  (it is not allowed to have a mix of HostProcess containers and non-HostProcess containers).
+                                  In addition, if HostProcess is true then HostNetwork must also be set to true.
+                                type: boolean
+                              runAsUserName:
+                                description: |-
+                                  The UserName in Windows to run the entrypoint of the container process.
+                                  Defaults to the user specified in image metadata if unspecified.
+                                  May also be set in PodSecurityContext. If set in both SecurityContext and
+                                  PodSecurityContext, the value specified in SecurityContext takes precedence.
+                                type: string
+                            type: object
+                        type: object
+                    type: object
+                type: object
+              smtp:
+                description: |-
+                  smtp configures outbound email per ADR 012. When unset, no SMTP
+                  env vars are emitted; outbound mail fails at transport (this is
+                  intentional per gap #11 admin-email-defaulting policy — loud
+                  failure beats silent leak of admin@example.com).
+                properties:
+                  inline:
+                    description: |-
+                      Inline mode: operator constructs a Secret with the SMTP_*
+                      keys derived from the fields below.
+                    properties:
+                      auth:
+                        default: login
+                        description: Optional. Default "login".
+                        enum:
+                        - login
+                        - plain
+                        - cram-md5
+                        type: string
+                      from:
+                        description: 'Required. Default From: email and SMTP envelope
+                          MAIL FROM.'
+                        minLength: 1
+                        type: string
+                      fromIdentities:
+                        description: 'Optional. Per-identity From: header overrides.'
+                        properties:
+                          custom1:
+                            description: |-
+                              SMTPIdentity carries one Magento identity's From: email + display name.
+                              MinLength=1 on each field means "if you set the key, you mean it" —
+                              blank values would silently produce empty SMTP_FROM_<IDENT> /
+                              SMTP_FROM_NAME_<IDENT> env vars.
+                            properties:
+                              email:
+                                minLength: 1
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                            type: object
+                          custom2:
+                            description: |-
+                              SMTPIdentity carries one Magento identity's From: email + display name.
+                              MinLength=1 on each field means "if you set the key, you mean it" —
+                              blank values would silently produce empty SMTP_FROM_<IDENT> /
+                              SMTP_FROM_NAME_<IDENT> env vars.
+                            properties:
+                              email:
+                                minLength: 1
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                            type: object
+                          general:
+                            description: |-
+                              SMTPIdentity carries one Magento identity's From: email + display name.
+                              MinLength=1 on each field means "if you set the key, you mean it" —
+                              blank values would silently produce empty SMTP_FROM_<IDENT> /
+                              SMTP_FROM_NAME_<IDENT> env vars.
+                            properties:
+                              email:
+                                minLength: 1
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                            type: object
+                          sales:
+                            description: |-
+                              SMTPIdentity carries one Magento identity's From: email + display name.
+                              MinLength=1 on each field means "if you set the key, you mean it" —
+                              blank values would silently produce empty SMTP_FROM_<IDENT> /
+                              SMTP_FROM_NAME_<IDENT> env vars.
+                            properties:
+                              email:
+                                minLength: 1
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                            type: object
+                          support:
+                            description: |-
+                              SMTPIdentity carries one Magento identity's From: email + display name.
+                              MinLength=1 on each field means "if you set the key, you mean it" —
+                              blank values would silently produce empty SMTP_FROM_<IDENT> /
+                              SMTP_FROM_NAME_<IDENT> env vars.
+                            properties:
+                              email:
+                                minLength: 1
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                            type: object
+                        type: object
+                      fromName:
+                        description: 'Optional. Default From: header display name.'
+                        type: string
+                      host:
+                        description: Required.
+                        minLength: 1
+                        type: string
+                      passwordSecretRef:
+                        description: |-
+                          SecretKeySelector is a namespaced-local reference to a single key in
+                          a Secret — mirrors corev1.SecretKeySelector but keeps the MageStore
+                          CRD free of the upstream import, which would bring in the whole
+                          LocalObjectReference optionality dance we already avoid.
+                        properties:
+                          key:
+                            default: password
+                            description: key defaults to "password" when unset.
+                            type: string
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      port:
+                        default: 587
+                        description: Optional. Default 587.
+                        format: int32
+                        type: integer
+                      tls:
+                        default: starttls
+                        description: Optional. Default "starttls".
+                        enum:
+                        - starttls
+                        - tls
+                        - "off"
+                        type: string
+                      user:
+                        description: |-
+                          Optional. Anonymous / IP-allowlist relays leave User and
+                          PasswordSecretRef unset. CEL enforces parity.
+                        type: string
+                    required:
+                    - from
+                    - host
+                    type: object
+                    x-kubernetes-validations:
+                    - message: user and passwordSecretRef must both be set or both
+                        unset
+                      rule: has(self.user) == has(self.passwordSecretRef)
+                  secretRef:
+                    description: |-
+                      SecretRef mode: customer-managed Secret with the SMTP_* keys
+                      directly. Operator validates SMTP_HOST + SMTP_FROM key
+                      presence at reconcile time.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of inline or secretRef must be set
+                  rule: '(has(self.inline) ? 1 : 0) + (has(self.secretRef) ? 1 : 0)
+                    == 1'
+              stores:
+                description: |-
+                  stores lists the Magento store scopes this MageStore serves.
+                  Each entry declares a public hostname, a Magento store code,
+                  and the scope type (website / store / store_view) — the
+                  operator generates an nginx `map $http_host` block and per-host
+                  Ingress rules from them, setting `MAGE_RUN_CODE` and
+                  `MAGE_RUN_TYPE` on the request before it reaches the frontend
+                  Service. When `spec.stores` is unset, the operator emits no
+                  MAGE_RUN_CODE / MAGE_RUN_TYPE env vars and Magento serves its
+                  default store (matches Slot-20 demo behaviour). See ADR 007.
+                items:
+                  description: |-
+                    StoreSpec identifies one Magento store scope by public hostname,
+                    Magento store code, and scope type. Used to generate the nginx
+                    `map $http_host $MAGE_RUN_CODE` block and per-host Ingress rules —
+                    see ADR 007. Multi-store Magento deployments (multiple websites
+                    in one codebase) set `spec.stores` with one entry per public
+                    host; separate codebases with independent DBs get separate
+                    MageStore CRs.
+                  properties:
+                    code:
+                      description: |-
+                        code is the Magento store code (as configured in the Magento
+                        admin or `setup:install`) that `MAGE_RUN_CODE` will be set to
+                        for requests with this host. Must match an existing Magento
+                        scope of the declared `type`.
+                      minLength: 1
+                      type: string
+                    host:
+                      description: |-
+                        host is the public hostname this store entry responds to.
+                        Exact Host-header match; no wildcard support. The operator
+                        generates one Ingress rule per host and one nginx map entry
+                        per host.
+                      minLength: 1
+                      type: string
+                    type:
+                      description: |-
+                        type is the Magento scope type for `code`. `website` selects a
+                        website scope (most common for multi-domain EU shops), `store`
+                        selects a store group, `store_view` selects an individual
+                        store view (common for language-variant storefronts on a
+                        single domain). Maps verbatim to `MAGE_RUN_TYPE`.
+                      enum:
+                      - website
+                      - store
+                      - store_view
+                      type: string
+                  required:
+                  - code
+                  - host
+                  - type
+                  type: object
+                type: array
+              upgrade:
+                description: |-
+                  upgrade configures how `spec.image.tag` drift becomes a Magento
+                  `setup:upgrade` arc. v0.2.0 introduces a maintenance window
+                  (Service-selector flip to a 503 page) fenced around the upgrade
+                  Job; future fields (hooks, autoRollbackOnFailure) land additively
+                  here. When unset, the operator still performs `setup:upgrade` on
+                  tag drift but with default-fenced maintenance — see ADR 008.
+                properties:
+                  maintenance:
+                    description: |-
+                      maintenance controls the maintenance window that fences traffic
+                      during an upgrade. Default behaviour fences traffic via a 503
+                      page (Service-selector flip to a one-replica nginx Deployment);
+                      opt-out exists for blue-green / canary admins who explicitly
+                      accept the integrity risk of mid-migration writes.
+                    properties:
+                      enabled:
+                        default: true
+                        description: |-
+                          enabled toggles the maintenance window during an upgrade. Default
+                          true — disabling is opt-in for shops running genuine blue-green
+                          or canary upgrades that explicitly accept the integrity risk of
+                          mid-migration writes against a non-transactional `setup:upgrade`.
+                          Pointer type so the +kubebuilder:default applies on omission only;
+                          explicit `false` is preserved through API server roundtrip.
+                        type: boolean
+                      htmlConfigMapRef:
+                        description: |-
+                          htmlConfigMapRef optionally points at a ConfigMap with a custom
+                          503 HTML page. The operator mounts the named key into the
+                          maintenance pod. When unset, the operator's baked-in default 503
+                          page is served.
+                        properties:
+                          key:
+                            default: index.html
+                            description: key is the ConfigMap data key holding the
+                              HTML payload.
+                            type: string
+                          name:
+                            description: name is the ConfigMap name (same namespace
+                              as the MageStore).
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                    type: object
+                type: object
+              varnish:
+                description: |-
+                  varnish configures an optional Varnish caching layer that
+                  sits in front of the frontend Service. When unset, no
+                  Varnish is materialised and Ingress points directly at the
+                  frontend. When set with `enabled: true`, the operator
+                  creates a Varnish Deployment + Service, generates a default
+                  VCL tuned for the Magento version (updated to match
+                  `spec.stores` when present — see ADR 007), and reroutes
+                  Ingress through it. Full VCL override via
+                  `vclConfigMapRef`.
+                properties:
+                  enabled:
+                    description: |-
+                      enabled gates the Varnish subsystem. When false, no Varnish
+                      resources are materialised and Ingress points directly at
+                      the frontend Service. When true, the operator creates the
+                      Varnish Deployment, Service, and VCL ConfigMap (when
+                      generated). Required so the meaning of `spec.varnish: {}` is
+                      explicit rather than defaulting silently.
+                    type: boolean
+                  replicas:
+                    default: 2
+                    description: |-
+                      replicas is the Varnish Deployment replica count. Default 2
+                      because `enabled: true` is an explicit opt-in that presumes
+                      prod-ish intent; demo-only deployments wanting a single
+                      Varnish instance should set `replicas: 1` explicitly.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  resources:
+                    description: |-
+                      resources overrides the Varnish container's resource
+                      requests/limits. Operator defaults (conservative — requests
+                      100m / 256Mi, limits 512Mi memory) are demo-sized; production
+                      Varnish sizing depends on catalogue size and hit-rate targets
+                      and is expected to be explicit.
+                    properties:
+                      claims:
+                        description: |-
+                          Claims lists the names of resources, defined in spec.resourceClaims,
+                          that are used by this container.
+
+                          This field depends on the
+                          DynamicResourceAllocation feature gate.
+
+                          This field is immutable. It can only be set for containers.
+                        items:
+                          description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                          properties:
+                            name:
+                              description: |-
+                                Name must match the name of one entry in pod.spec.resourceClaims of
+                                the Pod where this field is used. It makes that resource available
+                                inside a container.
+                              type: string
+                            request:
+                              description: |-
+                                Request is the name chosen for a request in the referenced claim.
+                                If empty, everything from the claim is made available, otherwise
+                                only the result of this request.
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                        x-kubernetes-list-map-keys:
+                        - name
+                        x-kubernetes-list-type: map
+                      limits:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Limits describes the maximum amount of compute resources allowed.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                      requests:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                          x-kubernetes-int-or-string: true
+                        description: |-
+                          Requests describes the minimum amount of compute resources required.
+                          If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                          otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                          More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                        type: object
+                    type: object
+                  vclConfigMapRef:
+                    description: |-
+                      vclConfigMapRef points at a user-managed ConfigMap holding
+                      the full VCL file (expected key: `default.vcl`). When unset,
+                      the operator generates VCL tuned for the Magento version and
+                      — when `spec.stores` is set — with per-host backend
+                      selection baked in (ADR 007). When set, the operator uses
+                      the supplied VCL verbatim and does NOT modify it; custom VCL
+                      authors wanting multi-store support must include the per-
+                      host mapping themselves.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  version:
+                    default: "7.5"
+                    description: |-
+                      version pins the Varnish image tag. Must be a valid tag on
+                      the upstream image (`docker.io/library/varnish:<tag>`). VCL
+                      syntax varies across Varnish major versions, so pinning
+                      matters when a custom VCL is supplied via
+                      `vclConfigMapRef`.
+                    type: string
+                required:
+                - enabled
+                type: object
+              workloads:
+                description: |-
+                  workloads configures the Magento workload split. Frontend is
+                  required; admin and api are optional and represent subtractive
+                  optimization — when unset, their Ingress paths fall through to
+                  the frontend Service at the nginx/Ingress layer (see ADR 006).
+                  Same codebase ships across all three, so a single frontend
+                  Deployment is functionally complete for small stores; the split
+                  exists for stores whose admin or API traffic must not compete
+                  with storefront traffic for CPU/memory.
+                properties:
+                  admin:
+                    description: |-
+                      admin is the admin-panel workload. When unset, admin-path
+                      requests route to the frontend Service. Split out for stores
+                      whose admin traffic has a different resource profile (heavy
+                      reports, long-running mass actions) that must not contend with
+                      storefront traffic.
+                    properties:
+                      autoscaling:
+                        description: |-
+                          autoscaling configures an HPA targeting this workload's
+                          Deployment. When unset, the workload runs at the declared
+                          `replicas` count without horizontal scaling.
+                        properties:
+                          maxReplicas:
+                            description: |-
+                              maxReplicas is the HPA upper bound. Required — without a cap
+                              autoscaling has no meaningful configuration.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          minReplicas:
+                            description: |-
+                              minReplicas is the HPA lower bound. When unset, the HPA uses
+                              the workload's `replicas` value as its floor.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          targetCPUUtilizationPercentage:
+                            default: 80
+                            description: |-
+                              targetCPUUtilizationPercentage is the average CPU utilization
+                              target driving scale decisions. Default 80% matches the
+                              Kubernetes HPA default.
+                            format: int32
+                            maximum: 100
+                            minimum: 1
+                            type: integer
+                        required:
+                        - maxReplicas
+                        type: object
+                      replicas:
+                        default: 1
+                        description: |-
+                          replicas is the desired replica count for this workload's
+                          Deployment. When `autoscaling` is set, `replicas` seeds the
+                          initial count but the HPA owns the steady-state value.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      resources:
+                        description: |-
+                          resources overrides the workload container's resource
+                          requests/limits. Operator defaults apply when unset. Production
+                          sizing differs meaningfully across storefront, admin, and API
+                          workloads and is expected to be explicit rather than inferred.
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This field depends on the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                    type: object
+                  api:
+                    description: |-
+                      api is the REST / GraphQL API workload. When unset, /rest and
+                      /graphql paths route to the frontend Service. Split out for
+                      stores whose API traffic profile (headless storefronts, PWA
+                      clients, integration partners) differs materially from
+                      storefront web traffic.
+                    properties:
+                      autoscaling:
+                        description: |-
+                          autoscaling configures an HPA targeting this workload's
+                          Deployment. When unset, the workload runs at the declared
+                          `replicas` count without horizontal scaling.
+                        properties:
+                          maxReplicas:
+                            description: |-
+                              maxReplicas is the HPA upper bound. Required — without a cap
+                              autoscaling has no meaningful configuration.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          minReplicas:
+                            description: |-
+                              minReplicas is the HPA lower bound. When unset, the HPA uses
+                              the workload's `replicas` value as its floor.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          targetCPUUtilizationPercentage:
+                            default: 80
+                            description: |-
+                              targetCPUUtilizationPercentage is the average CPU utilization
+                              target driving scale decisions. Default 80% matches the
+                              Kubernetes HPA default.
+                            format: int32
+                            maximum: 100
+                            minimum: 1
+                            type: integer
+                        required:
+                        - maxReplicas
+                        type: object
+                      replicas:
+                        default: 1
+                        description: |-
+                          replicas is the desired replica count for this workload's
+                          Deployment. When `autoscaling` is set, `replicas` seeds the
+                          initial count but the HPA owns the steady-state value.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      resources:
+                        description: |-
+                          resources overrides the workload container's resource
+                          requests/limits. Operator defaults apply when unset. Production
+                          sizing differs meaningfully across storefront, admin, and API
+                          workloads and is expected to be explicit rather than inferred.
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This field depends on the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                    type: object
+                  frontend:
+                    description: frontend is the storefront-serving workload.
+                    properties:
+                      autoscaling:
+                        description: |-
+                          autoscaling configures an HPA targeting this workload's
+                          Deployment. When unset, the workload runs at the declared
+                          `replicas` count without horizontal scaling.
+                        properties:
+                          maxReplicas:
+                            description: |-
+                              maxReplicas is the HPA upper bound. Required — without a cap
+                              autoscaling has no meaningful configuration.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          minReplicas:
+                            description: |-
+                              minReplicas is the HPA lower bound. When unset, the HPA uses
+                              the workload's `replicas` value as its floor.
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          targetCPUUtilizationPercentage:
+                            default: 80
+                            description: |-
+                              targetCPUUtilizationPercentage is the average CPU utilization
+                              target driving scale decisions. Default 80% matches the
+                              Kubernetes HPA default.
+                            format: int32
+                            maximum: 100
+                            minimum: 1
+                            type: integer
+                        required:
+                        - maxReplicas
+                        type: object
+                      replicas:
+                        default: 1
+                        description: |-
+                          replicas is the desired replica count for this workload's
+                          Deployment. When `autoscaling` is set, `replicas` seeds the
+                          initial count but the HPA owns the steady-state value.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      resources:
+                        description: |-
+                          resources overrides the workload container's resource
+                          requests/limits. Operator defaults apply when unset. Production
+                          sizing differs meaningfully across storefront, admin, and API
+                          workloads and is expected to be explicit rather than inferred.
+                        properties:
+                          claims:
+                            description: |-
+                              Claims lists the names of resources, defined in spec.resourceClaims,
+                              that are used by this container.
+
+                              This field depends on the
+                              DynamicResourceAllocation feature gate.
+
+                              This field is immutable. It can only be set for containers.
+                            items:
+                              description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                              properties:
+                                name:
+                                  description: |-
+                                    Name must match the name of one entry in pod.spec.resourceClaims of
+                                    the Pod where this field is used. It makes that resource available
+                                    inside a container.
+                                  type: string
+                                request:
+                                  description: |-
+                                    Request is the name chosen for a request in the referenced claim.
+                                    If empty, everything from the claim is made available, otherwise
+                                    only the result of this request.
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          limits:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Limits describes the maximum amount of compute resources allowed.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                          requests:
+                            additionalProperties:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            description: |-
+                              Requests describes the minimum amount of compute resources required.
+                              If Requests is omitted for a container, it defaults to Limits if that is explicitly specified,
+                              otherwise to an implementation-defined value. Requests cannot exceed Limits.
+                              More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+                            type: object
+                        type: object
+                    type: object
+                  imagePullPolicy:
+                    default: Always
+                    description: |-
+                      imagePullPolicy controls whether kubelet re-checks the registry
+                      for the workload image's digest on every pod start. Default
+                      (`Always`) protects against stale node-cached layers when the
+                      reference image's tag is mutable (e.g. `:2.4.8-sampledata` is
+                      rebuilt across releases) — `IfNotPresent` would let kubelet
+                      skip the pull when any layer for that name:tag exists locally,
+                      even if the registry's current digest has moved on. The
+                      `Always` default adds one HEAD-only digest resolution per pod
+                      start (KB on the wire, not the GB of a layer pull) which is
+                      negligible for storefronts where pod restarts are rare in
+                      steady state. Set to `IfNotPresent` for air-gapped registries
+                      (kubelet cannot reach the registry on every pod start) or
+                      rate-limited registries (anonymous Docker Hub pulls); the
+                      operator does not validate digest-stability when this override
+                      is in effect. Applies to every workload Deployment the operator
+                      owns: frontend / admin / api workloads, the ~20 queue-consumer
+                      Deployments, and Varnish. One-shot Jobs (bootstrap, smtp probe,
+                      store-urls, media seed, upgrade) already pin `PullAlways`
+                      regardless of this setting — they need a fresh digest at job
+                      creation time.
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
+                required:
+                - frontend
+                type: object
+            required:
+            - image
+            - workloads
+            type: object
+          status:
+            description: status defines the observed state of MageStore
+            properties:
+              conditions:
+                description: |-
+                  conditions carry detailed readiness state. Expected types
+                  (in pipeline order, with Ready as the rollup):
+                  DatabaseReady, SearchReady, CacheReady, QueueReady,
+                  SecretsReady, StoreInstalled, WorkloadsReady, VarnishReady,
+                  ConsumersReady, CronReady, UpgradeReady, Ready.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              jobAttempts:
+                additionalProperties:
+                  description: |-
+                    JobAttemptStatus tracks operator-initiated retry state for a single
+                    owned one-shot Job. Keyed by Job name in MageStoreStatus.JobAttempts.
+                  properties:
+                    count:
+                      default: 0
+                      description: |-
+                        count is the number of terminal-Failed observations the operator
+                        has recorded for this Job name across recreations. Resets to 0
+                        on successful Job completion. Drives the exponential backoff
+                        schedule used by the job-recovery helper.
+                      type: integer
+                    lastFailedAt:
+                      description: |-
+                        lastFailedAt is the wall-clock time at which the operator first
+                        observed the most recent terminal-Failed Job. Cleared (set
+                        implicitly to nil) after the operator deletes the Job; the next
+                        terminal-Failed observation re-stamps it.
+                      format: date-time
+                      type: string
+                    nextAttemptAt:
+                      description: |-
+                        nextAttemptAt is the wall-clock time at or after which the
+                        operator may delete the terminal-Failed Job. The value already
+                        includes ±25 % jitter so multiple MageStores in lockstep don't
+                        retry simultaneously. Cleared after deletion.
+                      format: date-time
+                      type: string
+                  required:
+                  - count
+                  type: object
+                description: |-
+                  jobAttempts tracks operator-initiated retry state for owned
+                  one-shot Jobs (media-seed, smtp-probe, bootstrap, store-urls,
+                  upgrade). Keyed by Job name. The operator deletes and
+                  recreates a terminal-Failed Job after an exponential backoff
+                  window elapses, ramping across recreations until the cap is
+                  reached. See v0.6.2 punch list (gap #1) for the schedule.
+                type: object
+              observedGeneration:
+                description: observedGeneration is the spec generation last reconciled.
+                format: int64
+                type: integer
+              observedImageTag:
+                description: |-
+                  observedImageTag is the image tag the schema is currently
+                  consistent with. Empty before first install completes; advances
+                  on successful `setup:upgrade` Job completion. Never advances on
+                  Job failure — the failure path keeps the prior value so the next
+                  reconcile re-evaluates the same upgrade arc. Subsession B's
+                  `ensureUpgrade` is the first writer; until then this field
+                  remains unset. See ADR 008.
+                type: string
+              phase:
+                description: |-
+                  MageStorePhase is a coarse lifecycle summary. Programmatic consumers should
+                  read Conditions instead.
+                enum:
+                - Pending
+                - Provisioning
+                - Upgrading
+                - Running
+                - Failed
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

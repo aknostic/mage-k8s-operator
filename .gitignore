@@ -1,0 +1,45 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/*
+Dockerfile.cross
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+
+# Kubernetes Generated files - skip generated files, except for vendored files
+!vendor/**/zz_generated.*
+
+# editor and IDE paraphernalia
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Local git worktrees — created via `git worktree add .worktrees/<name>`
+# for isolated feature work. Contents must never land in the main tree.
+.worktrees/
+
+# Kubeconfig might contain secrets
+*.kubeconfig
+kubeconfig-*.yaml
+
+# Cosign keys — only the public key (cosign.pub) is committed.
+# Private key and any base64 sidecar must never land in git.
+cosign.key
+cosign.key.b64
+
+# SOPS age key. The public key (age1...) lives inline in .sops.yaml and
+# is safe to commit; the private key MUST NEVER land in git.
+# `age-keygen -o age.key` produces the file this ignore protects.
+age.key
