@@ -1603,7 +1603,3 @@ type WorkloadSecurityContextSpec struct {
 	// +optional
 	Container *corev1.SecurityContext `json:"container,omitempty"`
 }
-
-func init() {
-	SchemeBuilder.Register(&MageStore{}, &MageStoreList{})
-}
