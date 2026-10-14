@@ -121,6 +121,17 @@ closes the arc.
   merge, so the bump rides here rather than waiting for a
   v0.6.5 backport. The fix carries forward via the v0.7.0
   release.
+- **Go 1.26.9 and dependency bumps clear `govulncheck`.** By
+  2026-10-14 `govulncheck` reported 25 reachable advisories: most
+  in the Go standard library (`net/http`, `crypto/tls`,
+  `html/template`, …; fixed in Go 1.26.9), the rest in
+  `golang.org/x/net`, `golang.org/x/text`, `google.golang.org/grpc`
+  and OpenTelemetry. The image builder moves `golang:1.26.3` →
+  `golang:1.26.9`, `go.mod` gains `toolchain go1.26.9` so local
+  builds and CI use the same patch release, and the indirect
+  dependencies move to `x/net` v0.60.0, `x/text` v0.42.0, `grpc`
+  v1.83.1 and `otel` v1.45.0. `govulncheck` now reports 0
+  reachable vulnerabilities.
 
 ## [v0.6.4] - 2026-05-08
 
