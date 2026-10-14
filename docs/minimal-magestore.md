@@ -34,7 +34,7 @@ spec:
 Without any `spec.database`, `spec.search`, or `spec.cache`
 stanza, the operator provisions the inline default for each
 tier (MariaDB via `mariadb-operator`, OpenSearch via
-`opensearch-k8s-operator`, Valkey via `valkey-operator`). All
+`opensearch-k8s-operator`, Valkey run by the operator itself). All
 are dev-sized — single-replica, small PVCs — and adequate for a
 local kind cluster or a non-production test deployment.
 

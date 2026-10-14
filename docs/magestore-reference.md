@@ -319,17 +319,18 @@ Redis-protocol backend. Three modes per ADR 004:
 
 | Sibling | Use when |
 |---|---|
-| `redis` | Operator provisions a Valkey CR inline (via hyperspike/valkey-operator). Wire-compatible with Redis. |
-| `redisRef` | Admin pre-created the Valkey CR. |
+| `redis` | Operator runs Valkey itself as a StatefulSet — single instance by default, Sentinel HA with 3/5/7 replicas (ADR 009). No cache operator needed. Wire-compatible with Redis. |
+| `redisRef` | You run the cache yourself (any operator or a hand-rolled deployment). `redisRef.name` names its Service; the password is read from a Secret of the same name (key `password`). |
 | `external` | Managed cloud service (ElastiCache, Memorystore, Upstash, Redis Cloud). |
 
-Field name stays `redis` even though the inline operator is
+Field name stays `redis` even though the inline cache is
 Valkey — the user-visible concept is Redis.
 
 ### `spec.cache.redis` (inline)
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
+| `replicas` | int (1, 3, 5, 7) | 1 | 1 = single instance; 3/5/7 = Sentinel HA. Switching between the two recreates the cache and needs the `mage.aknostic.com/cache-topology-change: "approved"` annotation. |
 | `resources` | `ResourceRequirements` | operator default | Container resources. |
 
 ### `spec.cache.external` (unmanaged)

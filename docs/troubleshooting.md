@@ -20,8 +20,7 @@ The `status.conditions` list has one entry per top-level concern:
 
 ## DependencyOperatorMissing — the cluster lacks the operator you opted into
 
-Surfaces on `DatabaseReady`, `SearchReady`, `CacheReady`, or
-`QueueReady` when the corresponding `spec.<tier>.<inline>` /
+Surfaces on `DatabaseReady`, `SearchReady`, or `QueueReady` when the corresponding `spec.<tier>.<inline>` /
 `<inlineRef>` is set but the dependency operator's CRDs are not
 installed in the cluster.
 
@@ -33,8 +32,8 @@ Only the affected sub-condition is set to `False`; nothing crashes.
 **What to check.**
 
 1. Look at the `message` — it names the operator you need to install
-   (e.g. `mariadb-operator`, `opensearch-k8s-operator`,
-   `valkey-operator`, `rabbitmq-cluster-operator`).
+   (`mariadb-operator`, `opensearch-k8s-operator` or
+   `rabbitmq-cluster-operator`; the cache needs no operator).
 2. Confirm the operator is installed: `kubectl get crd | grep <crd>`,
    where `<crd>` is the resource the operator owns. The expected CRDs
    are listed in [`prerequisites.md`](prerequisites.md).
@@ -79,13 +78,15 @@ Only the affected sub-condition is set to `False`; nothing crashes.
 | Reason | What it means | What to check |
 |---|---|---|
 | `NotConfigured` | `spec.cache` is empty. | Magento heavily uses Redis; set inline / ref / external. |
-| `DependencyOperatorMissing` | See above. | Install valkey-operator (hyperspike) or switch to `spec.cache.external`. |
-| `MaterialiseFailed` | Inline mode failed to create the Valkey CR. | Read the message. |
-| `NotFound` | The Valkey CR does not exist. | Inline: transient. Ref: confirm the named CR exists. |
+| `MaterialiseFailed` | Inline mode failed to create or update a cache resource (Valkey StatefulSet, Services, ConfigMaps, auth Secret, or the Sentinel Deployment). | Read the message. |
+| `TopologyChangeRequiresApproval` | `spec.cache.redis.replicas` changed between single-instance (1) and Sentinel HA (3/5/7). | The switch recreates the cache and drops sessions; approve it with the `mage.aknostic.com/cache-topology-change: "approved"` annotation on the MageStore. |
+| `SweepFailed` | Removing leftover Sentinel resources after going back to a single instance failed. | Read the message. |
+| `NotFound` | Inline: the `<store>-valkey` StatefulSet does not exist yet. Ref: the Service named in `redisRef` does not exist. | Inline: transient. Ref: confirm the Service exists in the MageStore's namespace. |
+| `NotReady` | The `<store>-valkey` StatefulSet has no ready pods. | `kubectl describe statefulset <store>-valkey` and check the pod logs. |
+| `SentinelPending` / `SentinelBelowQuorum` | Sentinel HA: the `<store>-valkey-sentinel` Deployment is missing or has fewer available pods than the quorum. | Usually transient after enabling HA; otherwise check the Sentinel pods. |
 | `LookupError` | Apiserver returned an error. | Read the message; usually transient. |
-| `NotReady` | The Valkey CR's `status.ready` is false. | `kubectl describe valkey <name>` and check pod logs. |
-| `CredentialSecretMissing` / `CredentialKeyEmpty` | The auto-generated or external credentials Secret can't be read. | Inline/ref: the valkey-operator generates this — check its logs. External (with `passwordSecretRef`): confirm the Secret + key. |
-| `ValkeyReady` / `ExternalReady` | Healthy. | — |
+| `CredentialSecretMissing` / `CredentialKeyEmpty` | The cache password Secret can't be read. | Ref: the Secret named after the `redisRef` Service (key `password`). External (with `passwordSecretRef`): confirm the Secret + key. |
+| `ValkeyReady` / `SentinelReady` / `ServiceReady` / `ExternalReady` | Healthy. | — |
 
 ## QueueReady reasons
 
