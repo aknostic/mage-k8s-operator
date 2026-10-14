@@ -6,8 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-First session of the v0.7.0 security baseline arc per
-`docs/internals/plans/2026-05-08-v0.7.0-security-baseline.md`.
+First session of the v0.7.0 security baseline arc.
 ADR 014 sets the architectural shape; the umbrella `spec.security`
 CRD group lands as a scaffold (`networkPolicies` and
 `workloadSecurityContext` sub-blocks are placeholders that gain
@@ -49,6 +48,29 @@ closes the arc.
   (per-item table maps each gap to its Secret); admin URL
   randomization on `AdminSpec` not `SecuritySpec`
   (bootstrap-time install argument, not reconcile-time policy).
+
+### Changed
+
+- **Project moved to GitHub** at
+  [`aknostic/mage-k8s-operator`](https://github.com/aknostic/mage-k8s-operator).
+  The Go module path is now `github.com/aknostic/mage-k8s-operator`
+  (was `gitlab.aknostic.com/aknostic/mage-operator`). From v0.7.0 the
+  operator image is published to `ghcr.io/aknostic/mage-operator` and
+  the Helm chart to `oci://ghcr.io/aknostic/charts/mage-operator`; the chart's
+  default `image.repository` follows. v0.6.4 and earlier stay on
+  `registry.gitlab.aknostic.com`. Upgrading from v0.6.x: point
+  `helm upgrade` at the new OCI URL.
+- **CI moved to GitHub Actions** (`.github/workflows/`), replacing
+  `.gitlab-ci.yml`. Release images are built from the tagged commit
+  for `linux/amd64` and `linux/arm64` and pushed by digest; the
+  `vX.Y.Z` / `latest` tags are only added after the Trivy scan (both
+  platforms) and cosign signing succeed. Each release gets a GitHub
+  Release with the chart, an SPDX SBOM and `cosign.pub` attached.
+  CodeQL (Go and workflow analysis) replaces the GitLab semgrep SAST
+  job and runs once the repository is public.
+  Dependabot watches Go modules, Actions and the Dockerfile base
+  image. `make docker-buildx` builds the Dockerfile directly, since
+  its builder stage now pins `--platform=$BUILDPLATFORM` itself.
 
 ### Fixed
 
@@ -103,6 +125,17 @@ closes the arc.
   merge, so the bump rides here rather than waiting for a
   v0.6.5 backport. The fix carries forward via the v0.7.0
   release.
+- **Go 1.26.9 and dependency bumps clear `govulncheck`.** By
+  2026-10-14 `govulncheck` reported 25 reachable advisories: most
+  in the Go standard library (`net/http`, `crypto/tls`,
+  `html/template`, …; fixed in Go 1.26.9), the rest in
+  `golang.org/x/net`, `golang.org/x/text`, `google.golang.org/grpc`
+  and OpenTelemetry. The image builder moves `golang:1.26.3` →
+  `golang:1.26.9`, `go.mod` gains `toolchain go1.26.9` so local
+  builds and CI use the same patch release, and the indirect
+  dependencies move to `x/net` v0.60.0, `x/text` v0.42.0, `grpc`
+  v1.83.1 and `otel` v1.45.0. `govulncheck` now reports 0
+  reachable vulnerabilities.
 
 ## [v0.6.4] - 2026-05-08
 

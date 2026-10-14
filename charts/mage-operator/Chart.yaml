@@ -10,9 +10,9 @@ keywords:
   - mage-os
   - adobe-commerce
   - operator
-home: https://gitlab.aknostic.com/aknostic/mage-operator
+home: https://github.com/aknostic/mage-k8s-operator
 sources:
-  - https://gitlab.aknostic.com/aknostic/mage-operator
+  - https://github.com/aknostic/mage-k8s-operator
 maintainers:
   - name: Aknostic
     url: https://aknostic.com
@@ -26,6 +26,6 @@ annotations:
       description: Declarative Magento deployment with managed database, cache, search and message queue references
   artifacthub.io/links: |
     - name: source
-      url: https://gitlab.aknostic.com/aknostic/mage-operator
+      url: https://github.com/aknostic/mage-k8s-operator
     - name: issues
-      url: https://gitlab.aknostic.com/aknostic/mage-operator/-/issues
+      url: https://github.com/aknostic/mage-k8s-operator/issues

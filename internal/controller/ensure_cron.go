@@ -14,8 +14,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
-	"gitlab.aknostic.com/aknostic/mage-operator/internal/magento"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
+	"github.com/aknostic/mage-k8s-operator/internal/magento"
 )
 
 // cronResourcePrefix slots between the store name and the cron group:

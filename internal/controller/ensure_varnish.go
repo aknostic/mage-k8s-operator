@@ -20,8 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
-	"gitlab.aknostic.com/aknostic/mage-operator/internal/magento"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
+	"github.com/aknostic/mage-k8s-operator/internal/magento"
 )
 
 // varnishSuffix is the common suffix for Varnish Deployment + Service

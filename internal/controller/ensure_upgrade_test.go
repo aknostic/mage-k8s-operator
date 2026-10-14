@@ -20,7 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 )
 
 // Test fixture tags. fromTag mirrors a Magento patch-pre-2.4.8 baseline;
@@ -106,7 +106,7 @@ var _ = Describe("ensureUpgrade", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "store", Namespace: namespace},
 			Spec: magev1alpha1.MageStoreSpec{
 				Image: magev1alpha1.MageStoreImage{
-					Repository: "registry.gitlab.aknostic.com/test/magento",
+					Repository: "registry.example.com/test/magento",
 					Tag:        upgradeToTag,
 				},
 				Workloads: magev1alpha1.WorkloadsSpec{
@@ -200,7 +200,7 @@ var _ = Describe("ensureUpgrade", func() {
 
 			Expect(job.Spec.Template.Spec.Containers).To(HaveLen(1))
 			c := job.Spec.Template.Spec.Containers[0]
-			Expect(c.Image).To(Equal("registry.gitlab.aknostic.com/test/magento:2.4.8"))
+			Expect(c.Image).To(Equal("registry.example.com/test/magento:2.4.8"))
 			Expect(c.ImagePullPolicy).To(Equal(corev1.PullAlways))
 			Expect(c.Args).To(HaveLen(1))
 			Expect(c.Args[0]).To(ContainSubstring("setup:upgrade"))

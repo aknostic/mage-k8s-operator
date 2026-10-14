@@ -1,7 +1,7 @@
 # Releasing mage-operator
 
 The release flow is deliberately simple: bump the chart, push a
-semver tag, let GitLab CI sign + publish.
+semver tag, let GitHub Actions build, sign and publish.
 
 ## Cadence and versioning
 
@@ -15,8 +15,9 @@ semver tag, let GitLab CI sign + publish.
 - **Minor releases** (`v0.2.0`) ship new CRD fields, new
   reconciler steps, image-contract additions.
 
-Per-release notes live in `CHANGELOG.md`; the changelog-check CI
-stage requires every MR to touch it.
+Per-release notes live in `CHANGELOG.md`; the `changelog` CI job
+requires every pull request to touch it (label docs- or CI-only PRs
+`skip-changelog`).
 
 ## Pre-release checklist
 
@@ -28,11 +29,10 @@ Before pushing a tag:
    `appVersion` to match the tag (chart `version` without the
    `v` prefix per Helm semver convention; `appVersion` keeps the
    `v` prefix to match the container image tag).
-3. **`make test`** locally — the CI runs the same target on push.
-4. **Confirm the latest `main`-branch CI pipeline is green** — the
-   `tag-image` job polls for the SHA-tagged container image to
-   exist, and a failed branch pipeline means there's no image to
-   retag.
+3. **`make test`** locally — the CI runs the same target on every
+   pull request.
+4. **Confirm CI on `main` is green** — the release workflow builds
+   the tagged commit but does not re-run the test suite.
 5. **Upgrade-arc validation — manual `--profile=medium` sweep**
    (gates v0.2.0+ minor releases that change `ensureUpgrade`,
    `ensureMaintenance`, or any code path the upgrade orchestrator
@@ -108,114 +108,122 @@ concerned.
 
 ## What CI does
 
-A semver tag (`vX.Y.Z` matching `^v\d+\.\d+\.\d+`) triggers the
-**release** stage of `.gitlab-ci.yml`. Three jobs run:
+A semver tag (`vX.Y.Z`) triggers
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml),
+a single job that:
 
-- **`tag-image`** uses
-  [`crane`](https://github.com/google/go-containerregistry) to
-  retag the existing `${IMAGE_NAME}:${CI_COMMIT_SHA}` image
-  (built and signed by the previous `main`-branch pipeline) as
-  `${IMAGE_NAME}:vX.Y.Z`. The crane retag is a manifest copy — no
-  rebuild — so the image bytes (and the cosign signature attached
-  to the digest) are preserved verbatim. The job polls up to 15
-  minutes waiting for the SHA-tagged image to appear, allowing a
-  tag pushed quickly after a merge to land cleanly.
+1. **Guards the version.** Fails if `Chart.yaml` `version` does not
+   match the tag (without the `v` prefix), so a tag pushed without a
+   chart bump cannot re-publish an old chart version.
+2. **Builds and pushes the image** for `linux/amd64` and
+   `linux/arm64` from the tagged commit — by digest only, with no
+   tag yet.
+3. **Scans both platforms with Trivy.** HIGH/CRITICAL findings fail
+   the release. Nothing is tagged, signed or published at that
+   point; the untagged digest left in GHCR is harmless.
+4. **Generates an SPDX SBOM** for the image digest.
+5. **Signs the image digest** with cosign.
+6. **Tags the image** `ghcr.io/aknostic/mage-operator:vX.Y.Z` with
+   `crane`, which copies the manifest as-is so the tag resolves to
+   the scanned, signed digest. `:latest` moves too, except for tags
+   with a `-suffix` (release candidates).
+7. **Packages, pushes and signs the chart** at
+   `oci://ghcr.io/aknostic/charts/mage-operator`.
+8. **Creates the GitHub Release** with generated notes, attaching the
+   chart `.tgz`, `sbom.spdx.json` and `cosign.pub`. `v0.*` tags and
+   tags with a `-suffix` are marked as pre-releases.
 
-- **`helm-push`** packages `charts/mage-operator/` and pushes the
-  resulting `.tgz` to the GitLab container registry as an OCI
-  artifact at `oci://${CI_REGISTRY_IMAGE}/charts/mage-operator`.
-  Guarded against drift: the job fails if `Chart.yaml` `version`
-  does not match the git tag (without the `v` prefix). Users
-  install with:
+Users install with:
 
-  ```bash
-  helm install mage-operator \
-    oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator \
-    --version X.Y.Z
-  ```
+```bash
+helm install mage-operator \
+  oci://ghcr.io/aknostic/charts/mage-operator \
+  --version X.Y.Z
+```
 
-- **`create-release`** uses GitLab's `release-cli` to create the
-  GitLab release object with the tag name and a link to the
-  container image.
+The workflow reads the repository secrets `COSIGN_PRIVATE_KEY_B64`
+(base64 of the cosign key matching `cosign.pub`) and
+`COSIGN_PASSWORD`. Packages pushed to GHCR can start out private;
+after the first release, check that the `mage-operator` image and
+the `charts/mage-operator` chart are public in the organization's
+package settings.
+
+### Releases before v0.7.0
+
+v0.1.0 – v0.6.4 were published by the project's former GitLab
+pipeline, and their artefacts stay there:
+
+- image: `registry.gitlab.aknostic.com/aknostic/mage-operator:vX.Y.Z`
+- chart: `oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator`
+
+They verify against the same `cosign.pub`.
 
 ## Image and chart signing (cosign)
 
-Every container image built on `main` is signed by the
-`sign-image` CI job using the cosign private key stored as
-`COSIGN_PRIVATE_KEY_B64` in GitLab CI variables. The public key
-is committed at the repo root as `cosign.pub`.
+Release images and charts are signed with a long-lived cosign key
+held in the `COSIGN_PRIVATE_KEY_B64` / `COSIGN_PASSWORD` repository
+secrets. The public key is committed at the repo root as
+`cosign.pub`.
 
-The image signature is attached to the image **digest**, not the
-tag. When `tag-image` retags the SHA-tagged image as `vX.Y.Z`,
-the signature still applies because both tags point at the same
-digest.
-
-Helm OCI charts are signed on tag pipelines by the `sign-chart`
-job (release stage, runs after `helm-push`). Charts pushed via
-`helm push` are OCI artifacts at the registry; cosign signs at
-the manifest digest level and is mediaType-agnostic, so the same
-key works for both image and chart. Chart signing is gated on
-`/^v\d+\.\d+\.\d+/` tags only — snapshot chart pushes are not
-signed (matching the image-signing posture, where only
-`main`-branch builds get signed). **Chart signing landed in
-v0.2.0**; v0.1.x charts are unsigned and stay that way (re-
-signing post-hoc would change the chart's signature attestation
+Signatures attach to the manifest **digest**, not the tag. Helm OCI
+charts are OCI artifacts too, and cosign is mediaType-agnostic, so
+the same key and verify command work for both. **Chart signing
+landed in v0.2.0**; v0.1.x charts are unsigned and stay that way
+(re-signing post-hoc would change the chart's signature attestation
 timing without changing the chart bytes — not worth the
 inconsistency).
 
 Verifiers run:
 
 ```bash
-# Operator image (every release).
+# Operator image.
 cosign verify \
   --key cosign.pub \
-  registry.gitlab.aknostic.com/aknostic/mage-operator:vX.Y.Z
+  ghcr.io/aknostic/mage-operator:vX.Y.Z
 
-# Helm chart (v0.2.0 and later — note the chart version has no `v` prefix).
+# Helm chart (note the chart version has no `v` prefix).
 cosign verify \
   --key cosign.pub \
-  registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator:X.Y.Z
+  ghcr.io/aknostic/charts/mage-operator:X.Y.Z
 ```
+
+For v0.6.4 and earlier, use the GitLab registry paths listed under
+[Releases before v0.7.0](#releases-before-v070).
 
 ## SBOM
 
-Every `main`-branch build also runs `syft` to produce SPDX and
-CycloneDX SBOMs (`sbom.spdx.json`, `sbom.cdx.json`), retained as
-GitLab CI artifacts for 90 days.
+Every release generates an SPDX SBOM (`sbom.spdx.json`) for the
+image digest and attaches it to the GitHub Release.
 
 ## Rollback
 
-A bad release is rolled back by retagging:
+Releases are never mutated. To stop people picking up a bad
+release, delete its GitHub Release and tag:
 
 ```bash
+gh release delete vX.Y.Z
 git tag -d vX.Y.Z              # local
 git push origin :vX.Y.Z        # delete remote tag
 ```
 
-The container image tag and Helm OCI chart **remain in the
-registry** — GitLab does not delete OCI artifacts on tag deletion.
-Republish the previous good version's chart by re-tagging the
-prior commit (`git tag vX.Y.Z-1 vX.Y.Z-1`) which is a no-op for
-`tag-image` (the image already exists at that semver) but
-re-publishes the chart and recreates the GitLab release object.
+The image and Helm chart **remain in GHCR** — deleting a tag or a
+release does not delete packages, and `:latest` keeps pointing at
+the bad image until the next release. Delete the package versions
+in the organization's package settings if they must go.
 
-For users who already pulled the bad chart: bump the patch number
-forward (`vX.Y.Z+1`) with the rollback fix rather than pushing a
-mutated `vX.Y.Z` — semver immutability is a contract.
+Then bump the patch number forward (`vX.Y.Z+1`) with the fix rather
+than re-pushing `vX.Y.Z` — semver immutability is a contract.
 
 ## Non-goals for v0.1.0
 
 - **ArtifactHub publishing.** Deferred to v1.0.0. ArtifactHub
-  listing requires (a) the GitLab OCI registry to be publicly
-  readable, (b) an `artifacthub-repo.yml` file shipped alongside
-  the chart, and (c) a manual repo registration on artifacthub.io
-  — all of which are easier once the chart's surface has settled
-  through the v0.x iteration. Users discover the chart via this
-  README and the GitLab project README until v1.0.0.
-- **Cosign keyless / Sigstore TUF.** v0.1.0 uses a long-lived
-  cosign key. Keyless OIDC signing graduates when the GitLab
-  runner's identity provider is configured.
-- **Multi-arch images.** v0.1.0 ships `linux/amd64` only. A
-  `linux/arm64` build lands in a Phase-2 minor release once the
-  M-series Mac developer base is large enough to warrant the build
-  time.
+  listing requires (a) the chart to be publicly pullable, (b) an
+  `artifacthub-repo.yml` file shipped alongside the chart, and (c) a
+  manual repo registration on artifacthub.io — all of which are
+  easier once the chart's surface has settled through the v0.x
+  iteration. Users discover the chart via this repo's README until
+  v1.0.0.
+- **Cosign keyless / Sigstore TUF.** v0.x uses a long-lived cosign
+  key. GitHub Actions can provide the OIDC identity keyless signing
+  needs, but switching changes the verify command for every user,
+  so it waits for a deliberate release.

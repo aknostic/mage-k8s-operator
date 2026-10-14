@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 )
 
 // ensure_routing_test.go covers the per-MageStore Gateway/HTTPRoute
@@ -609,7 +609,7 @@ func newMinimalMageStore(ns string) *magev1alpha1.MageStore {
 		},
 		Spec: magev1alpha1.MageStoreSpec{
 			Image: magev1alpha1.MageStoreImage{
-				Repository: "registry.gitlab.aknostic.com/test/magento",
+				Repository: "registry.example.com/test/magento",
 				Tag:        "2.4.8",
 			},
 			Workloads: magev1alpha1.WorkloadsSpec{

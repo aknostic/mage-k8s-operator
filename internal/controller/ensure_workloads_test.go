@@ -29,7 +29,7 @@ import (
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 )
 
 // testMediaVolume returns the emptyDir-backed Volume that ensureMedia
@@ -96,7 +96,7 @@ var _ = Describe("ensureWorkloads", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "store", Namespace: namespace},
 			Spec: magev1alpha1.MageStoreSpec{
 				Image: magev1alpha1.MageStoreImage{
-					Repository: "registry.gitlab.aknostic.com/test/magento",
+					Repository: "registry.example.com/test/magento",
 					Tag:        "2.4.8",
 				},
 				Workloads: magev1alpha1.WorkloadsSpec{
@@ -595,7 +595,7 @@ var _ = Describe("ensureRouting", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "store", Namespace: namespace},
 			Spec: magev1alpha1.MageStoreSpec{
 				Image: magev1alpha1.MageStoreImage{
-					Repository: "registry.gitlab.aknostic.com/test/magento",
+					Repository: "registry.example.com/test/magento",
 					Tag:        "2.4.8",
 				},
 				Workloads: magev1alpha1.WorkloadsSpec{

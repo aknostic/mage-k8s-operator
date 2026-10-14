@@ -26,8 +26,9 @@ What SOPS is used for here:
 
 What SOPS is **not** used for:
 
-- `cosign` private signing keys — those stay in GitLab CI/CD variables
-  per `.gitlab-ci.yml`, not in git at all.
+- `cosign` private signing keys — those stay in GitHub Actions
+  repository secrets (`COSIGN_PRIVATE_KEY_B64`, `COSIGN_PASSWORD`),
+  not in git at all.
 - Credentials generated at runtime by Kubernetes operators (e.g.
   mariadb-operator's root password). Those live in their own K8s
   Secrets, were never in git, and are outside this policy.
