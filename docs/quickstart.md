@@ -91,6 +91,9 @@ helm install mage-operator \
   --namespace mage-operator-system --create-namespace
 ```
 
+v0.6.x releases are published on the GitLab registry shown above;
+from v0.7.0 the chart moves to `oci://ghcr.io/aknostic/charts/mage-operator`.
+
 Verify:
 
 ```bash

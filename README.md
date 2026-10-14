@@ -58,6 +58,8 @@ curl -sSfL https://raw.githubusercontent.com/aknostic/mage-k8s-operator/main/scr
 # version pins.
 
 # 2. Install the operator from the published Helm OCI chart.
+#    v0.6.x is on the GitLab registry; from v0.7.0 releases are
+#    published to oci://ghcr.io/aknostic/charts/mage-operator.
 helm install mage-operator \
   oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator \
   --version 0.6.4 \
@@ -157,8 +159,8 @@ flow detail at
 
 ## Contributing
 
-Issues and merge requests welcome. Before opening a substantive
-MR, please open an issue first and read the relevant
+Issues and pull requests welcome. Before opening a substantive
+PR, please open an issue first and read the relevant
 [ADR](docs/internals/adr/) — especially ADR 004 (the
 seeded-but-extractable dependencies pattern) and ADR 006 (workload
 naming + Gateway API routing). Match the commit-message style of

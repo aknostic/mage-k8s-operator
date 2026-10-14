@@ -847,10 +847,10 @@ gap #11 regression.
 
 ### Image-contract regression test
 
-The `build-magento-reference` job in `.gitlab-ci.yml` (the same
-pipeline that builds and pushes the reference image to
-`registry.gitlab.aknostic.com/aknostic/mage-operator/magento-reference`)
-gets a post-build smoke step:
+The reference-image build (the `build-magento-reference` job of the
+GitLab pipeline at the time; now
+`.github/workflows/reference-image.yml`, which pushes
+`ghcr.io/aknostic/magento-reference`) gets a post-build smoke step:
 
 ```
 docker run --rm $IMAGE which swaks
