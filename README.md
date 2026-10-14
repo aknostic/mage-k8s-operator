@@ -173,8 +173,10 @@ seeded-but-extractable dependencies pattern) and ADR 006 (workload
 naming + Gateway API routing). Match the commit-message style of
 the existing log.
 
-Local development setup, test conventions, and the release flow
-live under [`docs/internals/`](docs/internals/).
+Local development setup, tests and the PR checklist are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md); the release flow and ADRs
+live under [`docs/internals/`](docs/internals/). To report a
+security issue, see [`SECURITY.md`](SECURITY.md).
 
 ## License
 

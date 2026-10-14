@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-04-24
 - **Deciders:** @jurg
-- **Related:** `../plan.md` "Architecture essentials — multi-store
+- **Related:** the project plan's "Architecture essentials — multi-store
   = one CR, many hosts". Builds on ADR 006 (workload naming + Ingress
   routing). Session 1's `spec.stores` CRD addition is the input; Session 2's
   new `ensureNginxConfig` step is the consumer.

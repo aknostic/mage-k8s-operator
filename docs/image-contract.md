@@ -4,7 +4,7 @@ This document defines what a customer-provided Magento image must include to
 work with `mage-operator`. The operator emits configuration as individual
 env vars per [ADR 002](internals/adr/002-config-emission-modes.md) (amended 2026-04-24
 — the alternative ECE-Tools emission path was dropped from Phase 1 and will
-be revisited only on client demand). There is no `spec.config.mode` field
+be revisited only on user demand). There is no `spec.config.mode` field
 on the CRD.
 
 The operator is explicitly **not** a Magento container builder. Customers

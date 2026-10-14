@@ -222,7 +222,7 @@ does not move the boundary inward.
 - **mTLS (client cert verification).** Out of scope. Use case is
   niche (B2B catalog APIs that want client-cert authn at the edge).
   CRD field would be `spec.routing.tls.clientCertSecretRef` and a
-  `mode: Mutual` listener config; revisit if a paying client asks.
+  `mode: Mutual` listener config; revisit if users ask for it.
 - **Wildcard cert reuse across MageStores.** A cluster-admin who
   buys a `*.shops.example.com` wildcard cert today has to put the
   same Secret reference in every MageStore. Phase 2's shared-Gateway

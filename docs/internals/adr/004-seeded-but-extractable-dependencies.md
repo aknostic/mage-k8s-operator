@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-04-23
 - **Deciders:** @jurg
-- **Related:** `../plan.md` "Architecture essentials". Supersedes
+- **Related:** the project plan's "Architecture essentials". Supersedes
   the implicit ref-only shape in `spec.databaseRef` (current Phase-1 code)
   and `spec.search.opensearchRef` (drafted mid-Slot-15 before this ADR
   landed).
