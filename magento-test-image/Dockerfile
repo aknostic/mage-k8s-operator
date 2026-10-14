@@ -8,6 +8,10 @@
 # customer's codebase grafted in.
 #
 # Target: Magento 2.4.8-p4 via the Mage-OS mirror (no Adobe auth).
+#
+# Originally forked from the Dockerfile in Click & Mortar's
+# magento-kubernetes (https://github.com/ClickAndMortar/magento-kubernetes,
+# MIT license); since largely rewritten.
 
 # ---------------------------------------------------------------------------
 # Stage 1 — composer install + di:compile + static-content:deploy.

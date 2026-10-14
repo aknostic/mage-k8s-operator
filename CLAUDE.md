@@ -49,7 +49,7 @@ Magento only supports MySQL/MariaDB. The CRD supports `spec.database.mariaDbRef`
 Do not rename to `cacheRef` — it would confuse users and doesn't match the mariadb-operator naming pattern. Valkey works without any operator changes; just document it.
 
 ### Varnish VCL
-Ship a tested default VCL per Magento version (extracted from `bin/magento varnish:vcl:generate` plus production additions). Allow full override via `spec.varnish.vclConfigMapRef`. When `spec.stores` is present, the default VCL is updated with correct backend selection per host. Hash the VCL ConfigMap and annotate the Varnish Deployment to trigger rollouts on change.
+The operator generates a small default VCL (`GenerateDefaultVCL` in `internal/magento/vcl.go`): one backend pointing at the frontend Service, cache bypass for `/admin`, `/rest`, `/graphql` and non-GET/HEAD requests, and a 1-hour fallback TTL. When `spec.stores` is present it adds an explicit `vcl_hash` on Host + URL (ADR 007). `spec.varnish.vclConfigMapRef` replaces the generated VCL wholesale — the operator never splices fragments into a user VCL. Hash the VCL ConfigMap and annotate the Varnish Deployment to trigger rollouts on change.
 
 ### External Secrets Operator from v0.1.0
 Not a Phase 2 feature. When `spec.secrets.provider: external-secrets`, generate `ExternalSecret` CRs instead of raw `Secret` resources.

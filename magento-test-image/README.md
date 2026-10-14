@@ -5,6 +5,11 @@ A working Mage-OS 2.4.8-p4 image that satisfies the contract in
 your own customer image; it is not a production image — see "Known
 simplifications" below.
 
+The Dockerfile started as a fork of the Dockerfile in Click & Mortar's
+[magento-kubernetes](https://github.com/ClickAndMortar/magento-kubernetes)
+(MIT license) and has since been largely rewritten. The `MAGENTO_*`
+env var naming read by `env.php` follows their documentation.
+
 > Not affiliated with, endorsed by, or sponsored by Adobe Inc. "Magento"
 > and "Adobe Commerce" are trademarks of Adobe Inc.
 

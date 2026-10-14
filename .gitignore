@@ -43,3 +43,10 @@ cosign.key.b64
 # is safe to commit; the private key MUST NEVER land in git.
 # `age-keygen -o age.key` produces the file this ignore protects.
 age.key
+
+# AI-assisted development session artefacts (timing logs, handoff
+# briefs, generated plans). These are local working notes and must
+# never land in the public repo.
+TIMING.md
+NEXT_SESSION.md
+docs/superpowers/

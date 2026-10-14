@@ -23,23 +23,22 @@ This operator lifts those decisions into a single CRD. You
 describe *what* you want — a `MageStore` with N frontend
 replicas, M consumer workers, S3 media, two storefront hosts,
 your image — and the operator owns the *how*. It composes
-existing operators (`mariadb-operator`, `valkey-operator`,
-`opensearch-k8s-operator`, `rabbitmq-cluster-operator`, Envoy
-Gateway) rather than embedding their logic.
+existing operators (`mariadb-operator`, `opensearch-k8s-operator`,
+`rabbitmq-cluster-operator`, Envoy Gateway) rather than embedding
+their logic; the Valkey cache is run by the operator itself.
 
 ## Status
 
-**v0.1.x — alpha-stable.** Demo-runnable on a kind cluster. Real-
-infrastructure validation (EKS, Scaleway Kapsule) is in flight in
-parallel; expect v0.1.x patches as that surfaces edge cases. The
-CRD shape is not yet frozen — breaking field changes are gated to
-minor version bumps during the v0.x line and documented in
+**v0.6.x — alpha.** The latest release is v0.6.4. The operator
+runs end-to-end on kind and has been validated on a real Scaleway
+Kapsule cluster. v0.7.0 — a security baseline (NetworkPolicies,
+workload `securityContext`, admin URL randomization) — is in
+progress; see the `[Unreleased]` section of
 [`CHANGELOG.md`](CHANGELOG.md).
 
-**v0.2.0** lands upgrade orchestration (`spec.image.tag` changes
-drive a `setup:upgrade` Job arc with a maintenance fence around
-the storefront). Pre-release builds are tracked in CHANGELOG;
-the production-ready surface ships at the v0.2.0 tag.
+The CRD shape is not yet frozen — breaking field changes are gated
+to minor version bumps during the v0.x line and documented in the
+CHANGELOG.
 
 **Don't use this in production yet.**
 
@@ -50,9 +49,9 @@ If you have a Magento container image that honors the
 store on Kubernetes in ~5 minutes:
 
 ```bash
-# 1. Install the dependency operators (MariaDB, OpenSearch, Valkey,
+# 1. Install the dependency operators (MariaDB, OpenSearch,
 #    RabbitMQ, Envoy Gateway). On a kind cluster:
-curl -sSfL https://gitlab.aknostic.com/aknostic/mage-operator/-/raw/main/scripts/dev-k8s-setup.sh | bash
+curl -sSfL https://raw.githubusercontent.com/aknostic/mage-k8s-operator/main/scripts/dev-k8s-setup.sh | bash
 
 # On any other cluster, install each operator manually — see
 # docs/prerequisites.md for the per-operator install commands and
@@ -61,7 +60,7 @@ curl -sSfL https://gitlab.aknostic.com/aknostic/mage-operator/-/raw/main/scripts
 # 2. Install the operator from the published Helm OCI chart.
 helm install mage-operator \
   oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator \
-  --version 0.1.0 \
+  --version 0.6.4 \
   --namespace mage-operator-system --create-namespace
 
 # 3. Apply a minimal MageStore pointing at your image.
@@ -129,8 +128,7 @@ allow ~30 minutes for the first build (composer install +
   HA configuration: stateless tier scaling, ref-mode recipes for
   the four data tiers, known v0.3.0-roadmap limitations.
 - **[`docs/operations/upgrades.md`](docs/operations/upgrades.md)** —
-  upgrading a `MageStore` via `spec.image.tag` changes (full
-  content lands with v0.2.0).
+  upgrading a `MageStore` via `spec.image.tag` changes.
 - **[`docs/troubleshooting.md`](docs/troubleshooting.md)** —
   condition-by-condition reference: every `Reason` value the
   operator emits with "what it means" and "what to check."
@@ -149,7 +147,7 @@ pulling into production:
 
 ```bash
 cosign verify --key cosign.pub \
-  registry.gitlab.aknostic.com/aknostic/mage-operator:v0.1.0
+  registry.gitlab.aknostic.com/aknostic/mage-operator:v0.6.4
 ```
 
 The public key (`cosign.pub`) is in this repo. From v0.2.0

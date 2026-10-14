@@ -62,7 +62,7 @@ The repo ships a script that creates a kind cluster and installs
 every dependency in one pass. Pull and run it:
 
 ```bash
-curl -sSfL https://gitlab.aknostic.com/aknostic/mage-operator/-/raw/main/scripts/dev-k8s-setup.sh -o dev-k8s-setup.sh
+curl -sSfL https://raw.githubusercontent.com/aknostic/mage-k8s-operator/main/scripts/dev-k8s-setup.sh -o dev-k8s-setup.sh
 # Inspect before running — it does a lot:
 less dev-k8s-setup.sh
 bash dev-k8s-setup.sh
@@ -87,7 +87,7 @@ the operator emits HTTPRoute and Gateway resources unconditionally.
 ```bash
 helm install mage-operator \
   oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator \
-  --version 0.1.0 \
+  --version 0.6.4 \
   --namespace mage-operator-system --create-namespace
 ```
 
@@ -208,8 +208,8 @@ are CPU-bound). Allow ~4 GB of disk space.
 
 ```bash
 # Clone the repo (only needed for the reference-image build).
-git clone https://gitlab.aknostic.com/aknostic/mage-operator.git
-cd mage-operator
+git clone https://github.com/aknostic/mage-k8s-operator.git
+cd mage-k8s-operator
 
 # Build and load the image.
 docker build -t mage-operator/magento-reference:2.4.8 magento-test-image/
