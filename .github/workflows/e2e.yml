@@ -1,11 +1,11 @@
 # Full kind-based e2e suite (reference image build + upgrade arc).
-# Too slow for every PR (~90 min), so: nightly, on demand, and on PRs
-# labelled 'run-e2e'.
+# Too slow for every PR (~90 min), so: on demand, and on PRs labelled
+# 'run-e2e'. Not scheduled nightly until the suite passes on
+# GitHub-hosted runners: its first run there timed out waiting for
+# Magento's setup:install.
 name: E2E
 
 on:
-  schedule:
-    - cron: '17 2 * * *'
   workflow_dispatch:
   pull_request:
     types: [labeled, synchronize]
