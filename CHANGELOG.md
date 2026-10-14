@@ -57,8 +57,10 @@ closes the arc.
   (was `gitlab.aknostic.com/aknostic/mage-operator`). From v0.7.0 the
   operator image is published to `ghcr.io/aknostic/mage-operator` and
   the Helm chart to `oci://ghcr.io/aknostic/charts/mage-operator`; the chart's
-  default `image.repository` follows. v0.6.4 and earlier stay on
-  `registry.gitlab.aknostic.com`. Upgrading from v0.6.x: point
+  default `image.repository` follows. Releases up to v0.6.4 were
+  published on the former GitLab registry, which is no longer
+  public; until v0.7.0 ships, the README and quickstart build the
+  operator from source. Upgrading from v0.6.x: point
   `helm upgrade` at the new OCI URL.
 - **CI moved to GitHub Actions** (`.github/workflows/`), replacing
   `.gitlab-ci.yml`. Release images are built from the tagged commit
