@@ -1,5 +1,4 @@
 # Pull requests and pushes to main: security checks, lint, unit/envtest tests.
-# Ported from the former GitLab CI pipeline (check + test stages).
 name: CI
 
 on:

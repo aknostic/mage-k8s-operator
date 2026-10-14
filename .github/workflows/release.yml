@@ -1,6 +1,5 @@
 # Tag vX.Y.Z → multi-arch image + Helm OCI chart on ghcr.io, scanned,
 # SBOM'd, cosign-signed, and a GitHub Release with generated notes.
-# Ported from the former GitLab CI pipeline (build + release stages).
 #
 # The image is pushed by digest only, then scanned and signed; the
 # vX.Y.Z (and latest) tags are added last, so a failed scan never

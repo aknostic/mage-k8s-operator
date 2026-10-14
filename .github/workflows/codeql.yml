@@ -1,5 +1,4 @@
 # Static analysis for the Go code and the workflows themselves.
-# Replaces the former GitLab pipeline's semgrep SAST job.
 #
 # Code scanning on a private repository needs GitHub Advanced
 # Security, so the job is skipped while the repo is private and

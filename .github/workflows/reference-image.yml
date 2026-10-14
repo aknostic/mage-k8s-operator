@@ -1,6 +1,5 @@
 # Manual: build and publish the Magento reference image, so people can
 # try the operator without a 30-minute local build.
-# Ported from the build-magento-reference job of the former GitLab CI pipeline.
 name: Reference image
 
 on:

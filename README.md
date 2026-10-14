@@ -29,7 +29,9 @@ their logic; the Valkey cache is run by the operator itself.
 
 ## Status
 
-**v0.6.x — alpha.** The latest release is v0.6.4. The operator
+**v0.6.x — alpha.** The latest release is v0.6.4, published before
+the project moved to GitHub; v0.7.0 will be the first release on
+`ghcr.io`, and until then the operator is built from source. It
 runs end-to-end on kind and has been validated on a real Scaleway
 Kapsule cluster. v0.7.0 — a security baseline (NetworkPolicies,
 workload `securityContext`, admin URL randomization) — is in
@@ -57,13 +59,18 @@ curl -sSfL https://raw.githubusercontent.com/aknostic/mage-k8s-operator/main/scr
 # docs/prerequisites.md for the per-operator install commands and
 # version pins.
 
-# 2. Install the operator from the published Helm OCI chart.
-#    v0.6.x is on the GitLab registry; from v0.7.0 releases are
-#    published to oci://ghcr.io/aknostic/charts/mage-operator.
-helm install mage-operator \
-  oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator \
-  --version 0.6.4 \
+# 2. Build and install the operator. Until v0.7.0 is published on
+#    ghcr.io, it is built from source; on kind:
+git clone https://github.com/aknostic/mage-k8s-operator.git
+cd mage-k8s-operator
+make docker-build IMG=mage-operator:dev
+kind load docker-image mage-operator:dev --name mage-operator-dev
+helm install mage-operator charts/mage-operator \
+  --set image.repository=mage-operator --set image.tag=dev \
   --namespace mage-operator-system --create-namespace
+#    On any other cluster, push the image to a registry it can pull
+#    from (make docker-build docker-push IMG=<registry>/mage-operator:dev)
+#    and set image.repository / image.tag to match.
 
 # 3. Apply a minimal MageStore pointing at your image.
 kubectl apply -f - <<'EOF'
@@ -144,12 +151,12 @@ ADRs, release flow, SOPS workflow, and local SMTP setup.
 
 ## Cosign verification
 
-Release container images are signed with cosign. Verify before
-pulling into production:
+Release container images (on `ghcr.io` from v0.7.0) are signed
+with cosign. Verify before pulling into production:
 
 ```bash
 cosign verify --key cosign.pub \
-  registry.gitlab.aknostic.com/aknostic/mage-operator:v0.6.4
+  ghcr.io/aknostic/mage-operator:vX.Y.Z
 ```
 
 The public key (`cosign.pub`) is in this repo. From v0.2.0

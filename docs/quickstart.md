@@ -48,6 +48,8 @@ You need these installed locally:
 - A Kubernetes cluster you can `kubectl apply` against. For a
   local cluster: [`kind`](https://kind.sigs.k8s.io/) v0.23+ and
   Docker (or compatible runtime).
+- Docker and `make`, to build the operator image — needed until
+  v0.7.0 is published on `ghcr.io`.
 
 ## Step 1 — install the dependency operators
 
@@ -84,15 +86,22 @@ the operator emits HTTPRoute and Gateway resources unconditionally.
 
 ## Step 2 — install the mage-operator
 
+Until v0.7.0 is published on `ghcr.io`, build the operator from
+source. On kind:
+
 ```bash
-helm install mage-operator \
-  oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator \
-  --version 0.6.4 \
+git clone https://github.com/aknostic/mage-k8s-operator.git
+cd mage-k8s-operator
+make docker-build IMG=mage-operator:dev
+kind load docker-image mage-operator:dev --name mage-operator-dev
+helm install mage-operator charts/mage-operator \
+  --set image.repository=mage-operator --set image.tag=dev \
   --namespace mage-operator-system --create-namespace
 ```
 
-v0.6.x releases are published on the GitLab registry shown above;
-from v0.7.0 the chart moves to `oci://ghcr.io/aknostic/charts/mage-operator`.
+On any other cluster, push the image to a registry the cluster can
+pull from (`make docker-build docker-push IMG=<registry>/mage-operator:dev`)
+and set `image.repository` / `image.tag` to match.
 
 Verify:
 
@@ -210,7 +219,7 @@ packages; `setup:di:compile` and `setup:static-content:deploy`
 are CPU-bound). Allow ~4 GB of disk space.
 
 ```bash
-# Clone the repo (only needed for the reference-image build).
+# Clone the repo (skip if you already did in Step 2).
 git clone https://github.com/aknostic/mage-k8s-operator.git
 cd mage-k8s-operator
 

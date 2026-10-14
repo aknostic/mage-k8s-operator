@@ -150,13 +150,11 @@ package settings.
 
 ### Releases before v0.7.0
 
-v0.1.0 – v0.6.4 were published by the project's former GitLab
-pipeline, and their artefacts stay there:
-
-- image: `registry.gitlab.aknostic.com/aknostic/mage-operator:vX.Y.Z`
-- chart: `oci://registry.gitlab.aknostic.com/aknostic/mage-operator/charts/mage-operator`
-
-They verify against the same `cosign.pub`.
+v0.1.0 – v0.6.4 were published by the project's former pipeline to
+a registry that is no longer public. v0.7.0 is the first release on
+ghcr.io; until it ships, the README and quickstart build the
+operator from source. When cutting v0.7.0, switch both back to
+`helm install mage-operator oci://ghcr.io/aknostic/charts/mage-operator`.
 
 ## Image and chart signing (cosign)
 
@@ -186,9 +184,6 @@ cosign verify \
   --key cosign.pub \
   ghcr.io/aknostic/charts/mage-operator:X.Y.Z
 ```
-
-For v0.6.4 and earlier, use the GitLab registry paths listed under
-[Releases before v0.7.0](#releases-before-v070).
 
 ## SBOM
 
