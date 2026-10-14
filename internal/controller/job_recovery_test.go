@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 )
 
 // Tests cover the terminal-Failed Job recovery helper in isolation

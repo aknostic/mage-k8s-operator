@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 )
 
 // gatewayClassName is the GatewayClass the operator attaches its

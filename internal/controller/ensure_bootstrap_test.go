@@ -40,7 +40,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 )
 
 var _ = Describe("buildBootstrapScript", func() {

@@ -1,0 +1,45 @@
+# Full kind-based e2e suite (reference image build + upgrade arc).
+# Too slow for every PR (~90 min), so: nightly, on demand, and on PRs
+# labelled 'run-e2e'.
+name: E2E
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-e2e')
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Free disk space (Magento image + OpenSearch are large)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: Run e2e
+        run: make test-e2e
+      - name: Dump cluster state on failure
+        if: failure()
+        run: |
+          kubectl get all,magestores -A -o wide || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -200 || true
+          kubectl -n mage-operator-system logs deploy/mage-operator-controller-manager --tail=500 || true

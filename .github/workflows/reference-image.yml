@@ -1,0 +1,43 @@
+# Manual: build and publish the Magento reference image, so people can
+# try the operator without a 30-minute local build.
+# Ported from the build-magento-reference job of the former GitLab CI pipeline.
+name: Reference image
+
+on:
+  workflow_dispatch:
+    inputs:
+      magento_version:
+        description: Magento version tag
+        default: '2.4.8'
+      with_sampledata:
+        description: Include Luma sample data
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: magento-test-image
+          push: true
+          build-args: |
+            WITH_SAMPLEDATA=${{ inputs.with_sampledata }}
+          tags: ghcr.io/${{ github.repository_owner }}/magento-reference:${{ inputs.magento_version }}${{ inputs.with_sampledata && '-sampledata' || '' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=magento-reference
+          cache-to: type=gha,scope=magento-reference,mode=max

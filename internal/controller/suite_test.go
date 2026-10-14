@@ -40,7 +40,7 @@ import (
 	rabbitmqv1beta1 "github.com/rabbitmq/cluster-operator/v2/api/v1beta1"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

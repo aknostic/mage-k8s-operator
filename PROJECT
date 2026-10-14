@@ -7,7 +7,7 @@ domain: aknostic.com
 layout:
 - go.kubebuilder.io/v4
 projectName: mage-operator
-repo: gitlab.aknostic.com/aknostic/mage-operator
+repo: github.com/aknostic/mage-k8s-operator
 resources:
 - api:
     crdVersion: v1
@@ -16,6 +16,6 @@ resources:
   domain: aknostic.com
   group: mage
   kind: MageStore
-  path: gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1
+  path: github.com/aknostic/mage-k8s-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -6,8 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-First session of the v0.7.0 security baseline arc per
-`docs/internals/plans/2026-05-08-v0.7.0-security-baseline.md`.
+First session of the v0.7.0 security baseline arc.
 ADR 014 sets the architectural shape; the umbrella `spec.security`
 CRD group lands as a scaffold (`networkPolicies` and
 `workloadSecurityContext` sub-blocks are placeholders that gain
@@ -49,6 +48,25 @@ closes the arc.
   (per-item table maps each gap to its Secret); admin URL
   randomization on `AdminSpec` not `SecuritySpec`
   (bootstrap-time install argument, not reconcile-time policy).
+
+### Changed
+
+- **Project moved to GitHub** at
+  [`aknostic/mage-k8s-operator`](https://github.com/aknostic/mage-k8s-operator).
+  The Go module path is now `github.com/aknostic/mage-k8s-operator`
+  (was `gitlab.aknostic.com/aknostic/mage-operator`). From v0.7.0 the
+  operator image is published to `ghcr.io/aknostic/mage-operator` and
+  the Helm chart to `oci://ghcr.io/aknostic/charts/mage-operator`; the chart's
+  default `image.repository` follows. v0.6.4 and earlier stay on
+  `registry.gitlab.aknostic.com`. Upgrading from v0.6.x: point
+  `helm upgrade` at the new OCI URL.
+- **CI moved to GitHub Actions** (`.github/workflows/`), replacing
+  `.gitlab-ci.yml`. Release images are built from the tagged commit
+  for `linux/amd64` and `linux/arm64`, and each release gets a GitHub
+  Release with the chart, an SPDX SBOM and `cosign.pub` attached.
+  Dependabot watches Go modules, Actions and the Dockerfile base
+  image. `make docker-buildx` builds the Dockerfile directly, since
+  its builder stage now pins `--platform=$BUILDPLATFORM` itself.
 
 ### Fixed
 

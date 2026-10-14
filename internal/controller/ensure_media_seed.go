@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	magev1alpha1 "gitlab.aknostic.com/aknostic/mage-operator/api/v1alpha1"
+	magev1alpha1 "github.com/aknostic/mage-k8s-operator/api/v1alpha1"
 )
 
 // ConditionMediaSeeded is the sub-readiness condition ensureMediaSeed

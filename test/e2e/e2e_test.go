@@ -30,7 +30,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"gitlab.aknostic.com/aknostic/mage-operator/test/utils"
+	"github.com/aknostic/mage-k8s-operator/test/utils"
 )
 
 // namespace where the project is deployed in

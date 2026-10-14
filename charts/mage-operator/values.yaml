@@ -7,7 +7,7 @@
 replicaCount: 1
 
 image:
-  repository: registry.gitlab.aknostic.com/aknostic/mage-operator
+  repository: ghcr.io/aknostic/mage-operator
   tag: ""  # defaults to Chart.AppVersion when empty
   pullPolicy: IfNotPresent
 

@@ -1,0 +1,121 @@
+# Pull requests and pushes to main: security checks, lint, unit/envtest tests.
+# Ported from the former GitLab CI pipeline (check + test stages).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go fmt
+        run: go fmt ./... && git diff --exit-code
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.4
+          args: --timeout 10m
+          only-new-issues: ${{ github.event_name == 'pull_request' }}
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Unit + envtest
+        run: make test
+      - name: Fail if generated code is stale
+        run: git diff --exit-code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - run: govulncheck ./...
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@v3.93.4
+        with:
+          extra_args: --only-verified
+
+  manifests-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: helm lint
+        run: helm lint charts/mage-operator
+      - name: kube-linter
+        run: |
+          curl -sSfL https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz | tar xz
+          ./kube-linter lint charts/mage-operator
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+  no-personal-emails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Only example/test email domains in the tree
+        run: |
+          EMAIL_PATTERN='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+          ALLOWED_TEST_DOMAINS='@([A-Za-z0-9._-]+\.)?(example\.com|example\.test|example\.org|localhost)\b'
+          ALLOWED_INFRA='(git@github\.com|@users\.noreply\.github\.com)\b'
+          MATCHES=$(grep -rEn "$EMAIL_PATTERN" \
+            --include='*.yaml' --include='*.yml' --include='*.go' \
+            --include='*.md' --include='*.php' --include='*.sh' \
+            --exclude-dir=vendor --exclude-dir=.git . \
+            | grep -vE "$ALLOWED_TEST_DOMAINS" \
+            | grep -vE "$ALLOWED_INFRA" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Emails outside the allowed test domains found:"
+            echo "$MATCHES"
+            echo "Use admin@example.com / noreply@example.com in docs and samples."
+            exit 1
+          fi
+
+  changelog:
+    # Add the 'skip-changelog' label for docs/CI-only PRs.
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: CHANGELOG.md updated
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -q '^CHANGELOG.md$'; then
+            echo "CHANGELOG.md was modified"
+          else
+            echo "::error::Add an entry under [Unreleased] in CHANGELOG.md (or label the PR 'skip-changelog')."
+            exit 1
+          fi

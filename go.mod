@@ -1,4 +1,4 @@
-module gitlab.aknostic.com/aknostic/mage-operator
+module github.com/aknostic/mage-k8s-operator
 
 go 1.26
 
