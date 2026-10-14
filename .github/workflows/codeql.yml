@@ -1,0 +1,47 @@
+# Static analysis for the Go code and the workflows themselves.
+# Replaces the former GitLab pipeline's semgrep SAST job.
+#
+# Code scanning on a private repository needs GitHub Advanced
+# Security, so the job is skipped while the repo is private and
+# runs once it is public. Use this workflow, not CodeQL "default
+# setup" in the repo settings: the two cannot be enabled together.
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload results to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: autobuild
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

@@ -116,15 +116,20 @@ a single job that:
    match the tag (without the `v` prefix), so a tag pushed without a
    chart bump cannot re-publish an old chart version.
 2. **Builds and pushes the image** for `linux/amd64` and
-   `linux/arm64` from the tagged commit, as
-   `ghcr.io/aknostic/mage-operator:vX.Y.Z` and `:latest`.
-3. **Scans it with Trivy.** HIGH/CRITICAL findings fail the release
-   before anything is signed or the chart is published.
+   `linux/arm64` from the tagged commit — by digest only, with no
+   tag yet.
+3. **Scans both platforms with Trivy.** HIGH/CRITICAL findings fail
+   the release. Nothing is tagged, signed or published at that
+   point; the untagged digest left in GHCR is harmless.
 4. **Generates an SPDX SBOM** for the image digest.
-5. **Signs the image** with cosign.
-6. **Packages, pushes and signs the chart** at
+5. **Signs the image digest** with cosign.
+6. **Tags the image** `ghcr.io/aknostic/mage-operator:vX.Y.Z` with
+   `crane`, which copies the manifest as-is so the tag resolves to
+   the scanned, signed digest. `:latest` moves too, except for tags
+   with a `-suffix` (release candidates).
+7. **Packages, pushes and signs the chart** at
    `oci://ghcr.io/aknostic/charts/mage-operator`.
-7. **Creates the GitHub Release** with generated notes, attaching the
+8. **Creates the GitHub Release** with generated notes, attaching the
    chart `.tgz`, `sbom.spdx.json` and `cosign.pub`. `v0.*` tags and
    tags with a `-suffix` are marked as pre-releases.
 

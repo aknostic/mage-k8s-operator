@@ -2,6 +2,10 @@
 # SBOM'd, cosign-signed, and a GitHub Release with generated notes.
 # Ported from the former GitLab CI pipeline (build + release stages).
 #
+# The image is pushed by digest only, then scanned and signed; the
+# vX.Y.Z (and latest) tags are added last, so a failed scan never
+# leaves a release tag pointing at an unscanned or unsigned image.
+#
 # Required repo secrets:
 #   COSIGN_PRIVATE_KEY_B64  base64 of the cosign.key matching cosign.pub
 #   COSIGN_PASSWORD         password of that key (empty string if none)
@@ -19,6 +23,7 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/mage-operator
   CHART_REPO: oci://ghcr.io/${{ github.repository_owner }}/charts
   CHART_REF: ghcr.io/${{ github.repository_owner }}/charts/mage-operator
+  CRANE_VERSION: '0.20.3'
 
 jobs:
   release:
@@ -43,16 +48,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push image (by digest, untagged)
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ github.ref_name }}
-            ${{ env.IMAGE }}:latest
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ github.ref_name }}
@@ -60,39 +62,73 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Record image digest
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "DIGEST=${BUILD_DIGEST}" >> "$GITHUB_ENV"
+
       - name: Trivy scan (HIGH/CRITICAL fail the release)
+        env:
+          # The package is private until made public, so Trivy needs
+          # registry credentials to pull it.
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          docker run --rm aquasec/trivy:0.69.1 image --exit-code 1 \
-            --severity HIGH,CRITICAL --no-progress \
-            "${IMAGE}@${{ steps.build.outputs.digest }}"
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD \
+              aquasec/trivy:0.69.1 image --exit-code 1 \
+              --severity HIGH,CRITICAL --no-progress --platform "$platform" \
+              "${IMAGE}@${DIGEST}"
+          done
 
       - name: SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          image: ${{ env.IMAGE }}@${{ env.DIGEST }}
           format: spdx-json
           output-file: sbom.spdx.json
           upload-artifact: false
           upload-release-assets: false
 
       - uses: sigstore/cosign-installer@v3
+      - name: Write cosign key
+        env:
+          COSIGN_PRIVATE_KEY_B64: ${{ secrets.COSIGN_PRIVATE_KEY_B64 }}
+        run: |
+          umask 077
+          echo "$COSIGN_PRIVATE_KEY_B64" | base64 -d > "$RUNNER_TEMP/cosign.key"
+
       - name: Sign image
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: cosign sign --key "$RUNNER_TEMP/cosign.key" --yes "${IMAGE}@${DIGEST}"
+
+      - name: Tag image
         run: |
-          echo "${{ secrets.COSIGN_PRIVATE_KEY_B64 }}" | base64 -d > cosign.key
-          cosign sign --key cosign.key --yes "${IMAGE}@${{ steps.build.outputs.digest }}"
+          curl -sSfL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP" crane
+          # crane copies the manifest as-is, so each tag resolves to the
+          # scanned and signed digest.
+          "$RUNNER_TEMP/crane" tag "${IMAGE}@${DIGEST}" "$GITHUB_REF_NAME"
+          case "$GITHUB_REF_NAME" in
+            *-*) echo "Suffixed tag; leaving :latest where it is" ;;
+            *) "$RUNNER_TEMP/crane" tag "${IMAGE}@${DIGEST}" latest ;;
+          esac
 
       - uses: azure/setup-helm@v4
       - name: Package, push and sign chart
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           helm package charts/mage-operator
           helm push mage-operator-*.tgz "${CHART_REPO}"
-          cosign sign --key cosign.key --yes "${CHART_REF}:${GITHUB_REF_NAME#v}"
-          rm -f cosign.key
+          cosign sign --key "$RUNNER_TEMP/cosign.key" --yes "${CHART_REF}:${GITHUB_REF_NAME#v}"
+
+      - name: Remove cosign key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cosign.key"
 
       - name: GitHub Release
         env:
@@ -106,7 +142,7 @@ jobs:
 
           Verify: \`cosign verify --key cosign.pub ${IMAGE}:${GITHUB_REF_NAME}\`
 
-          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for details.
+          See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md) for details.
           NOTES
           gh release create "$GITHUB_REF_NAME" $PRERELEASE \
             --title "$GITHUB_REF_NAME" --notes-file notes.md --generate-notes \

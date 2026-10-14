@@ -62,8 +62,12 @@ closes the arc.
   `helm upgrade` at the new OCI URL.
 - **CI moved to GitHub Actions** (`.github/workflows/`), replacing
   `.gitlab-ci.yml`. Release images are built from the tagged commit
-  for `linux/amd64` and `linux/arm64`, and each release gets a GitHub
+  for `linux/amd64` and `linux/arm64` and pushed by digest; the
+  `vX.Y.Z` / `latest` tags are only added after the Trivy scan (both
+  platforms) and cosign signing succeed. Each release gets a GitHub
   Release with the chart, an SPDX SBOM and `cosign.pub` attached.
+  CodeQL (Go and workflow analysis) replaces the GitLab semgrep SAST
+  job and runs once the repository is public.
   Dependabot watches Go modules, Actions and the Dockerfile base
   image. `make docker-buildx` builds the Dockerfile directly, since
   its builder stage now pins `--platform=$BUILDPLATFORM` itself.
