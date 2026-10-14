@@ -70,8 +70,10 @@ closes the arc.
   Release with the chart, an SPDX SBOM and `cosign.pub` attached.
   CodeQL (Go and workflow analysis) replaces the GitLab semgrep SAST
   job and runs once the repository is public.
-  Dependabot watches Go modules, Actions and the Dockerfile base
-  image. `make docker-buildx` builds the Dockerfile directly, since
+  Dependabot is limited to security updates (PRs only for
+  dependencies with a known vulnerability); other bumps stay
+  deliberate, with `govulncheck` in CI as the gate.
+  `make docker-buildx` builds the Dockerfile directly, since
   its builder stage now pins `--platform=$BUILDPLATFORM` itself.
 - **Dependencies.** `k8s.io/*` v0.35.3 → v0.37.1, `controller-runtime`
   v0.23.3 → v0.25.2, `gateway-api` v1.4.0 → v1.6.3, `ginkgo` v2.33.1,
@@ -80,8 +82,7 @@ closes the arc.
   `runtime.SchemeBuilder` instead of controller-runtime's deprecated
   `scheme.Builder`. GitHub Actions bumped (`setup-go` v7,
   `setup-buildx`/`setup-qemu` v4, `hadolint-action` 3.5.0,
-  `trufflehog` 3.99.2); Dependabot now groups Actions and
-  `github.com/onsi/*` updates.
+  `trufflehog` 3.99.2).
 
 ### Fixed
 
