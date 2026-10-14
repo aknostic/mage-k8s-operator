@@ -6,8 +6,8 @@ toolchain go1.26.9
 
 require (
 	github.com/mariadb-operator/mariadb-operator/v26 v26.3.0
-	github.com/onsi/ginkgo/v2 v2.28.1
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/onsi/gomega v1.40.0
 	github.com/opensearch-project/opensearch-k8s-operator/opensearch-operator v0.0.0-20260422182111-a5d962145b31
 	github.com/rabbitmq/cluster-operator/v2 v2.20.1
 	k8s.io/api v0.35.3
