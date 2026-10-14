@@ -97,6 +97,34 @@ func referenceRepoTag() (string, string) {
 	return ref[:idx], ref[idx+1:]
 }
 
+// dumpUpgradeDiagnostics writes what is needed to see why the test
+// store is stuck or failed: its conditions and workloads, the
+// bootstrap Job (setup:install) and its logs, namespace events, node
+// pressure and the operator's logs.
+func dumpUpgradeDiagnostics() {
+	By("collecting diagnostics for the failed upgrade-arc spec")
+	bootstrapJob := upgradeStoreName + "-bootstrap"
+	cmds := [][]string{
+		{"get", "magestore", upgradeStoreName, "-n", upgradeNamespace,
+			"-o", `jsonpath={range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}`},
+		{"get", "pods,jobs,statefulsets,deployments", "-n", upgradeNamespace, "-o", "wide"},
+		{"describe", "job", bootstrapJob, "-n", upgradeNamespace},
+		{"describe", "pods", "-l", "job-name=" + bootstrapJob, "-n", upgradeNamespace},
+		{"logs", "job/" + bootstrapJob, "-n", upgradeNamespace, "--all-containers", "--timestamps", "--tail=500"},
+		{"get", "events", "-n", upgradeNamespace, "--sort-by=.lastTimestamp"},
+		{"describe", "nodes"},
+		{"logs", "deploy/mage-operator-controller-manager", "-n", namespace, "--tail=300"},
+	}
+	for _, args := range cmds {
+		out, err := utils.Run(exec.Command("kubectl", args...))
+		if err != nil {
+			_, _ = fmt.Fprintf(GinkgoWriter, "%v\n", err)
+			continue
+		}
+		_, _ = fmt.Fprintf(GinkgoWriter, "%s\n", out)
+	}
+}
+
 var _ = Describe("Upgrade arc", Ordered, func() {
 
 	BeforeAll(func() {
@@ -149,6 +177,11 @@ spec:
     mariaDb: {}
   search:
     openSearch:
+      # One node instead of the default three. The test only needs
+      # search reachable for setup:install; a 3-node cluster's cold
+      # start (15-25 min on kind) left too little of the Ready
+      # budget for setup:install on GitHub-hosted runners.
+      replicas: 1
       # 256m JVM heap (default is 512m). The kind cluster — even
       # with 2 nodes at 7.65 GiB each — OOM-kills OpenSearch
       # processes during simultaneous Magento bootstrap if every
@@ -165,13 +198,12 @@ spec:
 		Expect(utils.ApplyManifest(manifest)).To(Succeed())
 
 		By("waiting for the store to reach Ready=True (setup:install + workload rollout)")
-		// 30-minute budget. OpenSearch's 3-replica bootstrap on a
-		// 2-node kind cluster contends with everything else for
-		// memory + CPU and takes 15-25 min on cold start (cluster
-		// formation involves three sequential pod startups, each
+		// 30-minute budget. A 3-replica OpenSearch took 15-25 min
+		// on cold start here (three sequential pod startups, each
 		// pulling the 1GB OpenSearch image, JVM heap warming, and
-		// the bootstrap-pod handoff). Magento's setup:install
-		// adds another 5-10 min on top. The Eventually's polling
+		// the bootstrap-pod handoff), which is why the store above
+		// runs a single node. Magento's setup:install adds another
+		// 5-10 min on top. The Eventually's polling
 		// interval is intentionally 15s rather than 10s — during
 		// the bootstrap window the apiserver is under enough load
 		// that aggressive polling adds friction without yielding
@@ -195,8 +227,17 @@ spec:
 		// fixture generation also keeps the kind cluster within
 		// memory bounds: the perf-toolkit small profile pushes
 		// php-fpm memory beyond what the Docker Desktop VM can
-		// host alongside 3-replica OpenSearch + Magento bootstrap
+		// host alongside OpenSearch + Magento bootstrap
 		// concurrently, OOM-killing the frontend pod.
+	})
+
+	// AfterEach runs before AfterAll deletes the namespace, so a failed
+	// spec (including a failed BeforeAll) can still dump the store's
+	// state, the bootstrap Job's logs and the operator's logs.
+	AfterEach(func() {
+		if CurrentSpecReport().Failed() {
+			dumpUpgradeDiagnostics()
+		}
 	})
 
 	AfterAll(func() {
