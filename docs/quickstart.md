@@ -29,7 +29,7 @@ A `MageStore` resource named `store` reconciles to:
 
 - a managed MariaDB cluster (via `mariadb-operator`),
 - an OpenSearch cluster (via `opensearch-operator`),
-- a Valkey instance for cache + session (via `valkey-operator`),
+- a Valkey instance for cache + session (run by the operator itself),
 - a RabbitMQ broker for queue consumers (via `rabbitmq-cluster-operator`),
 - a frontend Deployment + Service running your Magento image,
 - consumer Deployments + cron CronJobs against the broker,
@@ -76,7 +76,7 @@ Re-running is idempotent; reuse the cluster across sessions.
 
 Install each operator individually. The version pins and exact
 `helm install` / `kubectl apply` commands live in
-[`prerequisites.md`](prerequisites.md). The four data-tier
+[`prerequisites.md`](prerequisites.md). The three data-tier
 operators are opt-out — if you're using a managed cloud service
 (RDS, ElastiCache, OpenSearch Service, Amazon MQ) you only need
 the operators for the tiers you provision in-cluster.

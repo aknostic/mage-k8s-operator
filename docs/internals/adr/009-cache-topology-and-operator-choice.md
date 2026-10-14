@@ -178,8 +178,8 @@ StatefulSet, `sentinel monitor` for the Sentinel ConfigMap. No magic.
   RabbitMQ all on the same pod network), so the threat model
   TLS-to-clients addresses is structurally moot for the target
   audience. Customers needing TLS-to-clients use `redisRef`/`external`
-  against a TLS-terminated front door. Will revisit if a paying
-  client or clear public-issue volume forces a re-read.
+  against a TLS-terminated front door. Will revisit if user
+  demand or clear public-issue volume forces a re-read.
 - **Backups.** Not addressed at this layer. Users responsible per ADR
   004's general dep-data philosophy.
 - **Migration path from v0.2.x Valkey CR data.** No automated

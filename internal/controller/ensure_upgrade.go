@@ -70,7 +70,7 @@ const (
 
 	// upgradeRequeueShort is the requeue-after for "in-flight, check
 	// back soon" states (Job running, cron pods still terminating).
-	// 30s mirrors plan.md's transient-failure cadence.
+	// 30s matches the reconciler's transient-failure requeue.
 	upgradeRequeueShort = 30 * time.Second
 )
 

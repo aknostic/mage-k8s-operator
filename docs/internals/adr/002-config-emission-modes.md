@@ -3,7 +3,7 @@
 - **Status:** Amended 2026-04-24 — envvars-only; ecetools path deferred pending demand (see Amendment below). Originally proposed 2026-04-22 as a dual-mode ADR (envvars default + ecetools opt-in).
 - **Date:** 2026-04-22 (original) / 2026-04-24 (amendment)
 - **Deciders:** @jurg
-- **Related:** `../plan.md` Lessons 1; ADR 001 (kubebuilder-over-operator-sdk) not yet written
+- **Related:** the original project plan (unpublished); ADR 001 (kubebuilder-over-operator-sdk) not yet written
 
 ## Amendment (2026-04-24)
 
@@ -26,7 +26,7 @@ validator + mode-switch in ensureSecrets + ecetools JSON
 emission + per-mode image-contract validation Job + tests for
 both paths) with no current user.
 
-**When to revisit:** paying-client demand or clear public ask
+**When to revisit:** clear user demand
 for Adobe-Cloud migration support. Re-adding the ecetools path
 is ~1 week of work and preserves the `envvars` default exactly
 as it is today. The door stays open; we just don't pay to keep

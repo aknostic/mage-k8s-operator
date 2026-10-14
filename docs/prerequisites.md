@@ -16,11 +16,14 @@ operator for one or more shops.
 | **A Gateway API controller** (Envoy Gateway recommended) | **yes, always** | The Gateway API CRDs are inert without a controller to provision data planes. |
 | `mariadb-operator` v26.x | only if you use `spec.database.mariaDb` or `mariaDbRef` | Inline/ref database modes create + watch its `MariaDB` CRs. |
 | `opensearch-k8s-operator` v3.x | only if you use `spec.search.openSearch` or `opensearchRef` | Inline/ref search modes create + watch its `OpenSearchCluster` CRs. |
-| `valkey-operator` (`hyperspike.io`) v0.0.x | only if you use `spec.cache.redis` or `redisRef` | Inline/ref cache modes create + watch its `Valkey` CRs. |
 | `rabbitmq-cluster-operator` v2.x | only if you use `spec.queue.rabbitMq` or `rabbitMqRef` | Inline/ref queue modes create + watch its `RabbitmqCluster` CRs. |
 | `cert-manager` v1.19+ | only if you use `spec.routing.tls.issuerRef` | Gateway API shim provisions and renews TLS certificates per host. Not needed for HTTP-only stores or `certificateSecretRef`. |
 
-The four data-tier operators (mariadb / opensearch / valkey /
+No cache operator is needed: the mage-operator runs the Valkey
+cache itself (a StatefulSet, optionally with Sentinel HA; see
+[ADR 009](internals/adr/009-cache-topology-and-operator-choice.md)).
+
+The three data-tier operators (mariadb / opensearch /
 rabbitmq) are **all opt-out-able** via the corresponding `spec.X.external`
 sibling — point at any reachable endpoint and the operator just
 threads credentials into the image. This includes search:
@@ -57,7 +60,6 @@ across majors needs operator-side validation.
 | Envoy Gateway | `v1.3.0` | `helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm --version v1.3.0 -n envoy-gateway-system --create-namespace` |
 | mariadb-operator | `26.3.0` | `helm upgrade --install mariadb-operator-crds mariadb-operator/mariadb-operator-crds --version 26.3.0`<br>`helm upgrade --install mariadb-operator mariadb-operator/mariadb-operator --version 26.3.0 -n mariadb-operator --create-namespace` |
 | opensearch-k8s-operator | `3.0.2` | `helm upgrade --install opensearch-operator opensearch-operator/opensearch-operator --version 3.0.2 -n opensearch-operator-system --create-namespace` |
-| valkey-operator (hyperspike) | `v0.0.61` | `kubectl apply -f https://github.com/hyperspike/valkey-operator/releases/download/v0.0.61/install.yaml` |
 | rabbitmq-cluster-operator | `v2.20.1` | `kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/download/v2.20.1/cluster-operator.yml` |
 | cert-manager (optional) | `v1.19.2` | `helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.19.2 --set installCRDs=true --set config.apiVersion=controller.config.cert-manager.io/v1alpha1 --set config.kind=ControllerConfiguration --set config.enableGatewayAPI=true` |
 
@@ -126,7 +128,7 @@ to install the operators backing the modes you actually use.
   if these CRDs are missing the operator pod fails fast at
   startup with a clear error pointing at the install command in
   the table above.
-- **The four data-tier operators** are soft. When their CRDs are
+- **The three data-tier operators** are soft. When their CRDs are
   missing, the operator logs a one-line warning at startup naming
   the missing CRD + operator + which `spec.<tier>` modes are
   affected. The corresponding informer is not registered, so the

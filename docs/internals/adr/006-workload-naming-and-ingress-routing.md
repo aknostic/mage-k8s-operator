@@ -3,7 +3,7 @@
 - **Status:** Accepted, amended 2026-04-24 (Ingress → Gateway API HTTPRoute)
 - **Date:** 2026-04-24
 - **Deciders:** @jurg
-- **Related:** `../plan.md` "Architecture essentials — three workload
+- **Related:** the project plan's "Architecture essentials — three workload
   types, not two". Resolves the Service-naming and Ingress-routing questions
   left open by Session 1's CRD surface (`spec.workloads` added to
   `api/v1alpha1/magestore_types.go`). Session 2 consumes this ADR in the
