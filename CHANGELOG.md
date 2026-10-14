@@ -70,8 +70,10 @@ closes the arc.
   Release with the chart, an SPDX SBOM and `cosign.pub` attached.
   CodeQL (Go and workflow analysis) replaces the GitLab semgrep SAST
   job and runs once the repository is public.
-  Dependabot watches Go modules, Actions and the Dockerfile base
-  image. `make docker-buildx` builds the Dockerfile directly, since
+  Dependabot is limited to security updates (PRs only for
+  dependencies with a known vulnerability); other bumps stay
+  deliberate, with `govulncheck` in CI as the gate.
+  `make docker-buildx` builds the Dockerfile directly, since
   its builder stage now pins `--platform=$BUILDPLATFORM` itself.
 
 ### Fixed
