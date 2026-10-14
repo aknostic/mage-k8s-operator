@@ -73,6 +73,15 @@ closes the arc.
   Dependabot watches Go modules, Actions and the Dockerfile base
   image. `make docker-buildx` builds the Dockerfile directly, since
   its builder stage now pins `--platform=$BUILDPLATFORM` itself.
+- **Dependencies.** `k8s.io/*` v0.35.3 → v0.37.1, `controller-runtime`
+  v0.23.3 → v0.25.2, `gateway-api` v1.4.0 → v1.6.3, `ginkgo` v2.33.1,
+  `gomega` v1.44.0. envtest runs against Kubernetes 1.37. The API
+  package registers its kinds with apimachinery's
+  `runtime.SchemeBuilder` instead of controller-runtime's deprecated
+  `scheme.Builder`. GitHub Actions bumped (`setup-go` v7,
+  `setup-buildx`/`setup-qemu` v4, `hadolint-action` 3.5.0,
+  `trufflehog` 3.99.2); Dependabot now groups Actions and
+  `github.com/onsi/*` updates.
 
 ### Fixed
 
