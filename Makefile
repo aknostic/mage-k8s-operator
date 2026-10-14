@@ -133,13 +133,12 @@ build-broken-reference-image: build-reference-image ## Build the broken-image fi
 
 .PHONY: test-e2e
 test-e2e: setup-test-e2e manifests generate fmt vet build-reference-image build-broken-reference-image ## Run the e2e tests. Expected an isolated environment using Kind.
-	# 60m Go test timeout: the upgrade-arc spec's BeforeAll has a 20m
+	# 120m Go test timeout: the upgrade-arc spec's BeforeAll has a 45m
 	# Ready=True budget (OpenSearch's 3-replica bootstrap on cold kind
-	# alone is ~10-15 min) plus 15m fixture generation, then a ~20m
-	# upgrade arc walk-through. The default 10m Go test timeout
-	# fires before any of that completes; matching the wall-time
-	# expectations the brief and ADR-008 Layer 2 set.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) MAGENTO_REFERENCE_IMAGE=$(MAGENTO_REFERENCE_IMAGE) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 60m
+	# alone is ~15-25 min, plus setup:install), then a ~20m upgrade
+	# arc walk-through and the failure-path specs. The default 10m Go
+	# test timeout fires before any of that completes.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) MAGENTO_REFERENCE_IMAGE=$(MAGENTO_REFERENCE_IMAGE) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 120m
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e

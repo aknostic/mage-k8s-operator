@@ -21,7 +21,7 @@ jobs:
   e2e:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-e2e')
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 180
     steps:
       - name: Free disk space (Magento image + OpenSearch are large)
         run: |

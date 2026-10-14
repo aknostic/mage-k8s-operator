@@ -177,11 +177,8 @@ spec:
     mariaDb: {}
   search:
     openSearch:
-      # One node instead of the default three. The test only needs
-      # search reachable for setup:install; a 3-node cluster's cold
-      # start (15-25 min on kind) left too little of the Ready
-      # budget for setup:install on GitHub-hosted runners.
-      replicas: 1
+      # Default three nodes. A single node would start faster but
+      # never forms a cluster (issue #21).
       # 256m JVM heap (default is 512m). The kind cluster — even
       # with 2 nodes at 7.65 GiB each — OOM-kills OpenSearch
       # processes during simultaneous Magento bootstrap if every
@@ -198,12 +195,15 @@ spec:
 		Expect(utils.ApplyManifest(manifest)).To(Succeed())
 
 		By("waiting for the store to reach Ready=True (setup:install + workload rollout)")
-		// 30-minute budget. A 3-replica OpenSearch took 15-25 min
-		// on cold start here (three sequential pod startups, each
+		// 45-minute budget. OpenSearch's 3-replica bootstrap on a
+		// 2-node kind cluster contends with everything else for
+		// memory + CPU and takes 15-25 min on cold start (cluster
+		// formation involves three sequential pod startups, each
 		// pulling the 1GB OpenSearch image, JVM heap warming, and
-		// the bootstrap-pod handoff), which is why the store above
-		// runs a single node. Magento's setup:install adds another
-		// 5-10 min on top. The Eventually's polling
+		// the bootstrap-pod handoff). Magento's setup:install
+		// adds another 5-10 min on top, and more on GitHub-hosted
+		// runners: with a 30-minute budget the bootstrap Job was
+		// still running when time ran out. The Eventually's polling
 		// interval is intentionally 15s rather than 10s — during
 		// the bootstrap window the apiserver is under enough load
 		// that aggressive polling adds friction without yielding
@@ -213,7 +213,7 @@ spec:
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(cond.Status).To(Equal("True"),
 				"Ready condition not yet True (reason=%q msg=%q)", cond.Reason, cond.Message)
-		}).WithTimeout(30 * time.Minute).WithPolling(15 * time.Second).Should(Succeed())
+		}).WithTimeout(45 * time.Minute).WithPolling(15 * time.Second).Should(Succeed())
 
 		// Note: the brief calls for `setup:perf:generate-fixtures
 		// --profile=small` here, but populated-DB testing is the
@@ -227,7 +227,7 @@ spec:
 		// fixture generation also keeps the kind cluster within
 		// memory bounds: the perf-toolkit small profile pushes
 		// php-fpm memory beyond what the Docker Desktop VM can
-		// host alongside OpenSearch + Magento bootstrap
+		// host alongside 3-replica OpenSearch + Magento bootstrap
 		// concurrently, OOM-killing the frontend pod.
 	})
 
