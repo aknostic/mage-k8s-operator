@@ -7,11 +7,23 @@ updates:
     groups:
       k8s:
         patterns: ['k8s.io/*', 'sigs.k8s.io/*']
+      ginkgo:
+        patterns: ['github.com/onsi/*']
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # go.mod pins the toolchain (toolchain go1.26.x). Moving to a new
+      # Go minor is a deliberate change across go.mod, CI and gofmt, so
+      # only patch releases are proposed; bump the toolchain line in
+      # go.mod alongside them.
+      - dependency-name: golang
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
