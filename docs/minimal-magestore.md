@@ -35,7 +35,9 @@ Without any `spec.database`, `spec.search`, or `spec.cache`
 stanza, the operator provisions the inline default for each
 tier (MariaDB via `mariadb-operator`, OpenSearch via
 `opensearch-k8s-operator`, Valkey run by the operator itself). All
-are dev-sized — single-replica, small PVCs — and adequate for a
+are dev-sized — single replicas (three for OpenSearch, which can't
+run as one node, see [#21](https://github.com/aknostic/mage-k8s-operator/issues/21)),
+small PVCs — and adequate for a
 local kind cluster or a non-production test deployment.
 
 The admin password is operator-generated; retrieve it after
@@ -113,7 +115,7 @@ deployments add at least:
   with `spec.varnish.enabled: true`.
 - **Multi-store hostnames**. Set `spec.stores[]` to map public
   hostnames to Magento store codes.
-- **HA**. These examples are single-replica everywhere and use
+- **HA**. These examples are single-replica everywhere except OpenSearch and use
   inline (dev-sized) data tiers. For production HA — frontend
   autoscaling, ref-mode data tiers, sizing recommendations — see
   [`operations/scaling.md`](operations/scaling.md).

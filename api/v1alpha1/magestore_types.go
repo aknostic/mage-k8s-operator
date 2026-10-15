@@ -498,12 +498,13 @@ type InlineOpenSearch struct {
 	// single remaining node deadlocks on `cluster_manager_not_discovered`
 	// because the bootstrap pod it was configured to join is gone. With
 	// >= 3 main replicas, a quorum survives the bootstrap departure and
-	// the cluster reaches green. Setting replicas=1 is supported for
-	// aggressive dev/test resource savings but known to be fragile;
-	// prefer opensearchRef with a single-node OpenSearchCluster CR where
-	// you can control discovery.type.
+	// the cluster reaches green. replicas=1 deadlocked on every e2e run,
+	// so it is rejected until that is fixed (issue #21); for a
+	// single-node cluster use opensearchRef with an OpenSearchCluster CR
+	// where you control discovery.type.
 	// +kubebuilder:default=3
 	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:XValidation:rule="self != 1",message="replicas: 1 never forms an OpenSearch cluster (issue #21); use 3 or more, or opensearchRef / external"
 	// +optional
 	Replicas int32 `json:"replicas,omitempty"`
 

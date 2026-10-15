@@ -90,10 +90,21 @@ kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api/releases/downlo
 # Envoy Gateway — installs the Gateway API controller and the
 # data-plane provisioner. Each MageStore's Gateway resource triggers
 # Envoy Gateway to provision an Envoy Deployment behind it.
+#
+# Helm 4 applies a chart's CRDs with server-side apply by default and
+# then conflicts with the Gateway API CRDs installed above (kubectl
+# client-side apply). --server-side=false restores Helm 3's behaviour of
+# leaving existing CRDs alone. Helm 3 doesn't know the flag.
+EG_HELM_FLAGS=""
+case "$(helm version --template '{{.Version}}')" in
+  v3.*) ;;
+  *) EG_HELM_FLAGS="--server-side=false" ;;
+esac
 echo "Installing Envoy Gateway ${ENVOY_GATEWAY_VERSION}..."
+# shellcheck disable=SC2086 # EG_HELM_FLAGS is empty or a single flag
 helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
   --version "${ENVOY_GATEWAY_VERSION}" \
-  --namespace envoy-gateway-system --create-namespace >/dev/null
+  --namespace envoy-gateway-system --create-namespace ${EG_HELM_FLAGS} >/dev/null
 kubectl wait --for=condition=Available -n envoy-gateway-system \
   deployment/envoy-gateway --timeout=120s >/dev/null
 

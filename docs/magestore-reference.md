@@ -297,7 +297,7 @@ reachable search endpoint at `setup:install`. Two modes:
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `version` | string | `2.19.2` | OpenSearch image tag. Magento 2.4.x is not certified against OpenSearch 3.x. |
-| `replicas` | int (>= 1) | 3 | Node pool size. Defaulting to 3 because single-replica startup races opensearch-operator's bootstrap-pod flow. |
+| `replicas` | int (>= 2) | 3 | Node pool size. `1` is rejected: a single node never forms a cluster with opensearch-operator's bootstrap-pod flow ([#21](https://github.com/aknostic/mage-k8s-operator/issues/21)). For a single-node cluster, use `opensearchRef`. |
 | `jvmHeap` | string | `512m` | JVM `-Xms`/`-Xmx`. Roughly half the container memory limit, capped at 31g. |
 | `resources` | `ResourceRequirements` | operator default | Container resources. |
 

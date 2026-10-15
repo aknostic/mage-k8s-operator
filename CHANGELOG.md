@@ -92,6 +92,18 @@ closes the arc.
 
 ### Fixed
 
+- **`scripts/dev-k8s-setup.sh` works with Helm 4.** Helm 4 (now
+  Homebrew's default) applies the Envoy Gateway chart's bundled
+  Gateway API CRDs with server-side apply, which conflicted with the
+  CRDs the script installs first, so the quickstart setup stopped at
+  the Envoy Gateway step. `scripts/install-dep-operators.sh` passes
+  `--server-side=false` on Helm 4 (Helm 3 is unchanged), and
+  `docs/prerequisites.md` says so for manual installs.
+- **`spec.search.openSearch.replicas: 1` is rejected** instead of
+  producing a store that never becomes ready: a single node never
+  forms a cluster with opensearch-operator's bootstrap-pod flow
+  (#21). The CRD now refuses the value with a message pointing at the
+  issue; use 3 or more, or `opensearchRef` / `external`.
 - **`Ready` no longer reports `True` while an upgrade has failed.**
   The Ready rollup still looked for `UpgradeReady`
   `Reason=SetupUpgradeFailed`, which nothing has set since the v0.6.2
