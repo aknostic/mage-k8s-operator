@@ -1,6 +1,6 @@
 # Broken-image variant of the magento-reference image, used by the
 # failure-path upgrade-arc e2e (test/e2e/upgrade_test.go) to drive the
-# operator's `Reason=SetupUpgradeFailed` + lockstep-refusal contract.
+# operator's `Reason=PermanentlyFailed` + lockstep-refusal contract.
 #
 # The variant inherits everything from the reference image and replaces
 # /app/bin/magento with a PHP shim that exits 1 on `setup:upgrade`.

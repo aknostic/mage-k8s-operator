@@ -91,12 +91,17 @@ small-catalogue store; large catalogues with long
    OwnerReference), and surfaces `UpgradeReady=True,
    Reason=UpgradeComplete`. Public traffic resumes against the
    new image and migrated schema. _< 1 second._
-8. **On Job failure.** Sets `phase = Failed`,
-   `UpgradeReady=False, Reason=SetupUpgradeFailed`. Cron stays
-   suspended, consumers stay at zero, maintenance fence stays
-   in place. The operator refuses to un-quiesce until the
-   failed Job is deleted — see [Recovering from a failed
-   upgrade](#recovering-from-a-failed-upgrade).
+8. **On Job failure.** Sets `phase = Failed` and
+   `UpgradeReady=False, Reason=RetryingFailedJob`, then deletes
+   and recreates the Job after a growing wait (30s, 2m, 5m, 10m,
+   30m, ±25 %). After five failed attempts it reports
+   `Reason=PermanentlyFailed` and stops retrying. Throughout,
+   cron stays suspended, consumers stay at zero, the maintenance
+   fence stays in place, and `Ready` reports the same Reason.
+   The operator refuses to un-quiesce until the failed Job is
+   deleted — see [Recovering from a failed
+   upgrade](#recovering-from-a-failed-upgrade). Whether the
+   automatic retries fit that contract is tracked in [#22](https://github.com/aknostic/mage-k8s-operator/issues/22).
 
 The window between stage 7's "new pods Available" and "Service
 selectors restored" is intentionally non-zero — admins can use
@@ -123,7 +128,8 @@ phase the arc is in.
 | `UpgradeStarting` | False | Arc just entered; maintenance fence standing up or cron quiesce in progress. | seconds, or up to 5 minutes if active cron pods are draining |
 | `WorkloadRolloutPending` | False | The upgrade Job is running, OR the Job completed and workload pods are rolling forward to the new image. | minutes; longer for large catalogues or many patches |
 | `UpgradeComplete` | True | Arc finished successfully; workloads Available, fence torn down. Replaced by `UpToDate` on the next reconcile. | transient |
-| `SetupUpgradeFailed` | False | The `setup:upgrade` Job failed; the schema is mid-migration. **Admin intervention required** — see [Recovering from a failed upgrade](#recovering-from-a-failed-upgrade). | indefinite until unstuck |
+| `RetryingFailedJob` | False | The `setup:upgrade` Job failed; the operator recreates it after a backoff (the message says when). The store stays fenced. | up to ~47 minutes over five attempts |
+| `PermanentlyFailed` | False | The Job failed five times; the operator stops retrying and keeps the failed Job for `kubectl logs`. The schema may be mid-migration. **Admin intervention required** — see [Recovering from a failed upgrade](#recovering-from-a-failed-upgrade). | indefinite until unstuck |
 | `CronQuiesceTimeout` | False | Active cron pods refused to terminate within 5 minutes. **Admin intervention required** — kill the long-running cron pod, then delete any partial upgrade Job, then reconcile re-evaluates. | indefinite until unstuck |
 
 `Reason=UpgradeComplete` exists for a single reconcile pass —
@@ -218,9 +224,12 @@ verification window contract is regression-tested in CI.
 through, the database is left in a half-migrated state — some
 patches applied, others not.
 
-When the upgrade Job fails, `UpgradeReady` surfaces
-`Reason=SetupUpgradeFailed`, `phase = Failed`, and the
-operator stops touching anything: cron stays suspended,
+When the upgrade Job fails, the operator first retries it up to
+five times (`Reason=RetryingFailedJob`; [#22](https://github.com/aknostic/mage-k8s-operator/issues/22) tracks whether
+upgrades should be retried at all). Once the attempts are spent,
+`UpgradeReady` surfaces `Reason=PermanentlyFailed`,
+`phase = Failed`, and the operator stops touching anything:
+cron stays suspended,
 consumers stay at zero, the maintenance fence stays in place.
 **Do not just re-run the same Job** — re-running
 `setup:upgrade` against a mid-migration schema applies patches
