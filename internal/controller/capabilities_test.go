@@ -90,7 +90,7 @@ var _ = Describe("Capabilities-driven dependency degradation", func() {
 				Capabilities: Capabilities{},
 			}
 			store.Spec.Search = &magev1alpha1.SearchSpec{
-				OpenSearch: &magev1alpha1.InlineOpenSearch{Version: "2.19.2", Replicas: 1, JvmHeap: "512m"},
+				OpenSearch: &magev1alpha1.InlineOpenSearch{Version: "2.19.2", Replicas: 3, JvmHeap: "512m"},
 			}
 			Expect(k8sClient.Create(ctx, store)).To(Succeed())
 

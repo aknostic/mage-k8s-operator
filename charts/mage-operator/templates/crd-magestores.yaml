@@ -1143,13 +1143,17 @@ spec:
                           single remaining node deadlocks on `cluster_manager_not_discovered`
                           because the bootstrap pod it was configured to join is gone. With
                           >= 3 main replicas, a quorum survives the bootstrap departure and
-                          the cluster reaches green. Setting replicas=1 is supported for
-                          aggressive dev/test resource savings but known to be fragile;
-                          prefer opensearchRef with a single-node OpenSearchCluster CR where
-                          you can control discovery.type.
+                          the cluster reaches green. replicas=1 deadlocked on every e2e run,
+                          so it is rejected until that is fixed (issue #21); for a
+                          single-node cluster use opensearchRef with an OpenSearchCluster CR
+                          where you control discovery.type.
                         format: int32
                         minimum: 1
                         type: integer
+                        x-kubernetes-validations:
+                        - message: 'replicas: 1 never forms an OpenSearch cluster
+                            (issue #21); use 3 or more, or opensearchRef / external'
+                          rule: self != 1
                       resources:
                         description: |-
                           resources overrides container resource requests/limits. Default:

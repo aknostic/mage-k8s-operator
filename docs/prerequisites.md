@@ -63,6 +63,10 @@ across majors needs operator-side validation.
 | rabbitmq-cluster-operator | `v2.20.1` | `kubectl apply -f https://github.com/rabbitmq/cluster-operator/releases/download/v2.20.1/cluster-operator.yml` |
 | cert-manager (optional) | `v1.19.2` | `helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.19.2 --set installCRDs=true --set config.apiVersion=controller.config.cert-manager.io/v1alpha1 --set config.kind=ControllerConfiguration --set config.enableGatewayAPI=true` |
 
+**Helm 4:** add `--server-side=false` to the Envoy Gateway install.
+Helm 4 applies the chart's bundled Gateway API CRDs with server-side
+apply, which conflicts with the CRDs installed one row above.
+
 For local development on kind, `scripts/dev-k8s-setup.sh` runs
 all of the above as one command.
 
