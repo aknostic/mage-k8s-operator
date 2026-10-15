@@ -86,6 +86,13 @@ closes the arc.
 
 ### Fixed
 
+- **Stores without TLS install again.** Since v0.6.0 the bootstrap
+  Job passed `--base-url-secure=http://…` to `setup:install` when
+  `spec.routing.tls` was unset. Magento only accepts an `https://`
+  value there ("Parameter validation failed"), so every install
+  without TLS failed and the Job retried until its budget ran out.
+  The flag is now left out without TLS; Magento uses `--base-url`
+  for both (ADR 013 amendment).
 - **One-shot Jobs honour `spec.workloads.imagePullPolicy`.** The
   bootstrap, SMTP probe, store-URLs, media-seed and upgrade Jobs
   pinned `imagePullPolicy: Always` (since v0.6.3), so a store whose

@@ -8,6 +8,17 @@
   mapping) and `spec.routing.tls` (ADR 010 — public-edge TLS);
   extends the bootstrap script defined in ADR 005.
 
+## Amendment (2026-10-15)
+
+Without TLS the bootstrap script no longer passes
+`--base-url-secure`. Magento's `setup:install` rejects any value for
+it that isn't `https://` ("you should use only following schemes:
+'https'"), even with `--use-secure=0`, so the "No TLS → both URLs
+`http://`" row below made every install without TLS fail. Magento
+falls back to `--base-url` for the secure URL. The derivation itself
+is unchanged: the store-URLs Job still sets `web/secure/base_url` to
+the `http://` URL.
+
 ## Context
 
 `internal/controller/ensure_bootstrap.go:71` hardcodes

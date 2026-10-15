@@ -78,9 +78,10 @@ const adminBackendFrontnameAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNO
 //     user@example.com remains, outbound mail fails at transport with
 //     a clear 551, and no admin email silently leaks (gap #11, ADR 012).
 //
-// The four fmt directives are (in order): baseURL, secureURL, useSecure,
-// useSecureAdmin — rendered by buildBootstrapScript via deriveBootstrapURLs.
-// See ADR 013 for the URL derivation matrix.
+// The four fmt directives are (in order): baseURL, the whole
+// `--base-url-secure` line (empty without TLS), useSecure,
+// useSecureAdmin — rendered by buildBootstrapScript via
+// deriveBootstrapURLs. See ADR 013 for the URL derivation matrix.
 const bootstrapScriptTemplate = `set -eu
 echo "== removing env.php so setup:install sees a clean install =="
 rm -f /app/app/etc/env.php
@@ -102,8 +103,7 @@ fi
 
 php -d memory_limit=2G bin/magento setup:install \
     --base-url=%s \
-    --base-url-secure=%s \
-    --use-secure=%d \
+%s    --use-secure=%d \
     --use-secure-admin=%d \
     --backend-frontname="${ADMIN_BACKEND_FRONTNAME}" \
     --db-host="${MAGENTO_DATABASE_HOST}" \
@@ -222,7 +222,15 @@ php -d memory_limit=2G /app/bin/magento setup:upgrade
 // the TFA-disable block when spec.bootstrap.admin.disableTFA is true (gap #4).
 func buildBootstrapScript(store *magev1alpha1.MageStore) string {
 	baseURL, secureURL, useSecure, useSecureAdmin := deriveBootstrapURLs(store)
-	script := fmt.Sprintf(bootstrapScriptTemplate, baseURL, secureURL, useSecure, useSecureAdmin)
+	// setup:install rejects any --base-url-secure that isn't https://
+	// ("you should use only following schemes: 'https'"), even with
+	// --use-secure=0. Without TLS, leave the flag out; Magento then
+	// uses --base-url for the secure URL too.
+	secureArg := ""
+	if useSecure == 1 {
+		secureArg = fmt.Sprintf("    --base-url-secure=%s \\\n", secureURL)
+	}
+	script := fmt.Sprintf(bootstrapScriptTemplate, baseURL, secureArg, useSecure, useSecureAdmin)
 	if store.Spec.Bootstrap != nil && store.Spec.Bootstrap.Admin.DisableTFA {
 		script += tfaDisableBlock
 	}
