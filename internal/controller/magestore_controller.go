@@ -144,6 +144,12 @@ type MageStoreReconciler struct {
 	// math/rand.Float64. Test seam for the ±25 % jitter applied to
 	// the Job-recovery backoff window.
 	RandFloat func() float64
+	// JobBackoffScale multiplies every entry of the Job-recovery
+	// backoff schedule (30s … 30m). 0 or 1 = the production schedule.
+	// Set from the manager's --job-retry-backoff-scale flag; the e2e
+	// suite shrinks it so the failure-path spec reaches the
+	// retry-budget-exhausted state in minutes instead of ~47.
+	JobBackoffScale float64
 }
 
 // ProbeCapabilities (cmd/main.go) reads CustomResourceDefinitions

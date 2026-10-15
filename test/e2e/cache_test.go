@@ -158,8 +158,11 @@ spec:
 			By("waiting for Sentinel to promote a non-pod-0 replica")
 			// Sentinel's `down-after-milliseconds 5000` plus the
 			// failover-timeout means the new master is observable
-			// within ~10-20 seconds; budget 90s to absorb scheduler
-			// + Sentinel re-convergence on cold tests.
+			// within ~10-20 seconds; budget 3 min to absorb scheduler
+			// + Sentinel re-convergence. Ginkgo shuffles top-level
+			// containers, and right after the upgrade-arc spec the
+			// cluster is busy enough that 90s was not always enough
+			// (failover-timeout 30s lets Sentinel retry a few times).
 			Eventually(func(g Gomega) {
 				addr, err := sentinelMasterAddr()
 				g.Expect(err).NotTo(HaveOccurred())
@@ -167,7 +170,7 @@ spec:
 					"Sentinel still tracks pod 0 — failover hasn't completed yet")
 				g.Expect(addr).NotTo(BeEmpty())
 				promotedMaster = addr
-			}).WithTimeout(90 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
+			}).WithTimeout(3 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
 		It("restarted pod 0 boots as replica (not master) after the Sentinel-driven failover", func() {

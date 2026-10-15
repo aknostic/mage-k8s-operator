@@ -175,7 +175,8 @@ func (r *MageStoreReconciler) recoverTerminalFailedJob(
 }
 
 // backoffWithJitter looks up the nominal duration for the given 1-based
-// attempt number and applies ±jobBackoffJitter via r.randFloat().
+// attempt number, scales it by r.JobBackoffScale (when set) and applies
+// ±jobBackoffJitter via r.randFloat().
 // Attempts past the schedule's length cap to the last entry — the
 // caller's Permanent check (against len(schedule)) gates whether the
 // helper is even invoked at that point.
@@ -187,6 +188,9 @@ func (r *MageStoreReconciler) backoffWithJitter(attempt int) time.Duration {
 		attempt = len(jobBackoffSchedule)
 	}
 	nominal := jobBackoffSchedule[attempt-1]
+	if r.JobBackoffScale > 0 {
+		nominal = time.Duration(float64(nominal) * r.JobBackoffScale)
+	}
 	// r.randFloat is in [0, 1); map to [-jitter, +jitter].
 	delta := (r.randFloat()*2 - 1) * jobBackoffJitter
 	return nominal + time.Duration(float64(nominal)*delta)

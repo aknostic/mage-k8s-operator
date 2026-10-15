@@ -70,7 +70,7 @@ var _ = Describe("buildBootstrapScript", func() {
 	type urlEntry struct {
 		mutate                 func(*magev1alpha1.MageStore)
 		expectedBaseURL        string
-		expectedSecure         string
+		expectedSecure         string // "" = --base-url-secure omitted
 		expectedUseSecure      int
 		expectedUseSecureAdmin int
 	}
@@ -86,8 +86,14 @@ var _ = Describe("buildBootstrapScript", func() {
 
 			Expect(script).To(ContainSubstring("--base-url="+e.expectedBaseURL),
 				"base-url should match")
-			Expect(script).To(ContainSubstring("--base-url-secure="+e.expectedSecure),
-				"base-url-secure should match")
+			if e.expectedSecure == "" {
+				// setup:install only accepts an https:// --base-url-secure.
+				Expect(script).NotTo(ContainSubstring("--base-url-secure"),
+					"without TLS the flag must be omitted")
+			} else {
+				Expect(script).To(ContainSubstring("--base-url-secure="+e.expectedSecure),
+					"base-url-secure should match")
+			}
 			Expect(script).To(ContainSubstring(
 				"--use-secure="+strconv.Itoa(e.expectedUseSecure)),
 				"use-secure should match")
@@ -96,11 +102,11 @@ var _ = Describe("buildBootstrapScript", func() {
 				"use-secure-admin should match")
 		},
 
-		Entry("nil stores, nil TLS → localhost http, useSecure=0",
+		Entry("nil stores, nil TLS → localhost http, no secure URL, useSecure=0",
 			urlEntry{
 				mutate:                 nil,
 				expectedBaseURL:        "http://localhost:8080/",
-				expectedSecure:         "http://localhost:8080/",
+				expectedSecure:         "",
 				expectedUseSecure:      0,
 				expectedUseSecureAdmin: 0,
 			},
@@ -120,7 +126,7 @@ var _ = Describe("buildBootstrapScript", func() {
 			},
 		),
 
-		Entry("stores set, nil TLS → real host http, useSecure=0",
+		Entry("stores set, nil TLS → real host http, no secure URL, useSecure=0",
 			urlEntry{
 				mutate: func(s *magev1alpha1.MageStore) {
 					s.Spec.Stores = []magev1alpha1.StoreSpec{
@@ -128,7 +134,7 @@ var _ = Describe("buildBootstrapScript", func() {
 					}
 				},
 				expectedBaseURL:        "http://shop.example.com/",
-				expectedSecure:         "http://shop.example.com/",
+				expectedSecure:         "",
 				expectedUseSecure:      0,
 				expectedUseSecureAdmin: 0,
 			},
@@ -151,13 +157,13 @@ var _ = Describe("buildBootstrapScript", func() {
 			},
 		),
 
-		Entry("empty stores slice, nil TLS → treated as unset → localhost http, useSecure=0",
+		Entry("empty stores slice, nil TLS → treated as unset → localhost http, no secure URL, useSecure=0",
 			urlEntry{
 				mutate: func(s *magev1alpha1.MageStore) {
 					s.Spec.Stores = []magev1alpha1.StoreSpec{}
 				},
 				expectedBaseURL:        "http://localhost:8080/",
-				expectedSecure:         "http://localhost:8080/",
+				expectedSecure:         "",
 				expectedUseSecure:      0,
 				expectedUseSecureAdmin: 0,
 			},
@@ -206,10 +212,33 @@ var _ = Describe("buildBootstrapJob SMTP envFrom", func() {
 		}
 	})
 
-	It("uses imagePullPolicy: Always so customer image rebuilds under the same tag are picked up", func() {
+	It("defaults imagePullPolicy to Always so customer image rebuilds under the same tag are picked up", func() {
 		store := minimalStore()
 		job := r.buildBootstrapJob(store, "mystore-bootstrap", adminRef, frontnameRef, "")
 		Expect(job.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+	})
+
+	It("uses spec.workloads.imagePullPolicy for every one-shot Job", func() {
+		// An image that only exists on the node (kind load, air-gapped
+		// mirror) can never be pulled; with IfNotPresent the Jobs must
+		// use the node's copy like the workloads do.
+		store := minimalStore()
+		store.Spec.Workloads.ImagePullPolicy = corev1.PullIfNotPresent
+		policies := map[string]corev1.PullPolicy{
+			"bootstrap": r.buildBootstrapJob(store, "mystore-bootstrap", adminRef, frontnameRef, "").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"upgrade": r.buildUpgradeJob(store, "mystore-upgrade", "2.4.7", "2.4.8").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"store-urls": r.buildStoreURLsJob(store, "mystore-store-urls", "hash").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"smtp-probe": buildSMTPProbeJob(store, "mystore-smtp", "hash", "mystore-smtp-probe").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"media-seed": buildMediaSeedJob(store, "mystore-media-seed").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+		}
+		for job, policy := range policies {
+			Expect(policy).To(Equal(corev1.PullIfNotPresent), job)
+		}
 	})
 
 	It("mounts <store>-smtp envFrom (without optional: true) when spec.smtp.inline is set", func() {

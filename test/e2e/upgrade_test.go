@@ -73,7 +73,7 @@ const (
 	reasonRolloutPend   = "WorkloadRolloutPending"
 	reasonUpgradeDone   = "UpgradeComplete"
 	reasonUpToDate      = "UpToDate"
-	reasonUpgradeFailed = "SetupUpgradeFailed"
+	reasonUpgradeFailed = "PermanentlyFailed" // retry budget exhausted (job_recovery.go)
 	maintenanceFlipAnno = "mage.aknostic.com/maintenance-flipped"
 	upgradeComponentLbl = "app.kubernetes.io/component=upgrade"
 )
@@ -97,6 +97,34 @@ func referenceRepoTag() (string, string) {
 	return ref[:idx], ref[idx+1:]
 }
 
+// dumpUpgradeDiagnostics writes what is needed to see why the test
+// store is stuck or failed: its conditions and workloads, the
+// bootstrap Job (setup:install) and its logs, namespace events, node
+// pressure and the operator's logs.
+func dumpUpgradeDiagnostics() {
+	By("collecting diagnostics for the failed upgrade-arc spec")
+	bootstrapJob := upgradeStoreName + "-bootstrap"
+	cmds := [][]string{
+		{"get", "magestore", upgradeStoreName, "-n", upgradeNamespace,
+			"-o", `jsonpath={range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}`},
+		{"get", "pods,jobs,statefulsets,deployments", "-n", upgradeNamespace, "-o", "wide"},
+		{"describe", "job", bootstrapJob, "-n", upgradeNamespace},
+		{"describe", "pods", "-l", "job-name=" + bootstrapJob, "-n", upgradeNamespace},
+		{"logs", "job/" + bootstrapJob, "-n", upgradeNamespace, "--all-containers", "--timestamps", "--tail=500"},
+		{"get", "events", "-n", upgradeNamespace, "--sort-by=.lastTimestamp"},
+		{"describe", "nodes"},
+		{"logs", "deploy/mage-operator-controller-manager", "-n", namespace, "--tail=300"},
+	}
+	for _, args := range cmds {
+		out, err := utils.Run(exec.Command("kubectl", args...))
+		if err != nil {
+			_, _ = fmt.Fprintf(GinkgoWriter, "%v\n", err)
+			continue
+		}
+		_, _ = fmt.Fprintf(GinkgoWriter, "%s\n", out)
+	}
+}
+
 var _ = Describe("Upgrade arc", Ordered, func() {
 
 	BeforeAll(func() {
@@ -118,6 +146,22 @@ var _ = Describe("Upgrade arc", Ordered, func() {
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy controller")
+
+		By("shortening the operator's Job retry backoff for the failure-path specs")
+		// A failed upgrade Job is retried five times (30s … 30m)
+		// before the operator gives up; scaled by 0.02 the failure
+		// path finishes in minutes. The JSON patch appends to the
+		// manager's args; a repeated flag on a re-run is harmless
+		// (the last value wins).
+		cmd = exec.Command("kubectl", "patch", "deployment", "mage-operator-controller-manager",
+			"-n", namespace, "--type=json", "-p",
+			`[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--job-retry-backoff-scale=0.02"}]`)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to set --job-retry-backoff-scale")
+		cmd = exec.Command("kubectl", "rollout", "status", "deployment/mage-operator-controller-manager",
+			"-n", namespace, "--timeout=3m")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "operator rollout after the backoff patch did not finish")
 
 		By("waiting for the controller to become Ready")
 		Eventually(func(g Gomega) {
@@ -143,12 +187,18 @@ spec:
     repository: %s
     tag: %q
   workloads:
+    # The reference image is kind-loaded, not in a registry; the
+    # default Always made every pod (and the bootstrap Job) fail with
+    # ErrImagePull.
+    imagePullPolicy: IfNotPresent
     frontend:
       replicas: 1
   database:
     mariaDb: {}
   search:
     openSearch:
+      # Default three nodes. A single node would start faster but
+      # never forms a cluster (issue #21).
       # 256m JVM heap (default is 512m). The kind cluster — even
       # with 2 nodes at 7.65 GiB each — OOM-kills OpenSearch
       # processes during simultaneous Magento bootstrap if every
@@ -165,13 +215,15 @@ spec:
 		Expect(utils.ApplyManifest(manifest)).To(Succeed())
 
 		By("waiting for the store to reach Ready=True (setup:install + workload rollout)")
-		// 30-minute budget. OpenSearch's 3-replica bootstrap on a
+		// 45-minute budget. OpenSearch's 3-replica bootstrap on a
 		// 2-node kind cluster contends with everything else for
 		// memory + CPU and takes 15-25 min on cold start (cluster
 		// formation involves three sequential pod startups, each
 		// pulling the 1GB OpenSearch image, JVM heap warming, and
 		// the bootstrap-pod handoff). Magento's setup:install
-		// adds another 5-10 min on top. The Eventually's polling
+		// adds another 5-10 min on top, and more on GitHub-hosted
+		// runners: with a 30-minute budget the bootstrap Job was
+		// still running when time ran out. The Eventually's polling
 		// interval is intentionally 15s rather than 10s — during
 		// the bootstrap window the apiserver is under enough load
 		// that aggressive polling adds friction without yielding
@@ -181,7 +233,7 @@ spec:
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(cond.Status).To(Equal("True"),
 				"Ready condition not yet True (reason=%q msg=%q)", cond.Reason, cond.Message)
-		}).WithTimeout(30 * time.Minute).WithPolling(15 * time.Second).Should(Succeed())
+		}).WithTimeout(45 * time.Minute).WithPolling(15 * time.Second).Should(Succeed())
 
 		// Note: the brief calls for `setup:perf:generate-fixtures
 		// --profile=small` here, but populated-DB testing is the
@@ -197,6 +249,15 @@ spec:
 		// php-fpm memory beyond what the Docker Desktop VM can
 		// host alongside 3-replica OpenSearch + Magento bootstrap
 		// concurrently, OOM-killing the frontend pod.
+	})
+
+	// AfterEach runs before AfterAll deletes the namespace, so a failed
+	// spec (including a failed BeforeAll) can still dump the store's
+	// state, the bootstrap Job's logs and the operator's logs.
+	AfterEach(func() {
+		if CurrentSpecReport().Failed() {
+			dumpUpgradeDiagnostics()
+		}
 	})
 
 	AfterAll(func() {
@@ -388,7 +449,8 @@ spec:
 	//      Context's leftover Complete Job on the first reconcile so the
 	//      new arc enters cleanly without manual `kubectl delete jobs`.
 	//   2. Eventually the upgrade Job is created, fails, and the operator
-	//      surfaces UpgradeReady=False, Reason=SetupUpgradeFailed.
+	//      surfaces UpgradeReady=False, Reason=PermanentlyFailed once
+	//      its retry budget is spent (RetryingFailedJob until then).
 	//   3. Revert spec.image.tag to the working `2.4.8-rc2` tag — the
 	//      operator MUST stay quiesced (lockstep refusal per ADR 008),
 	//      because un-quiescing while a failed Job exists could resume
@@ -410,15 +472,15 @@ spec:
 			patch := fmt.Sprintf(`{"spec":{"image":{"tag":%q}}}`, upgradeBrokenTag)
 			Expect(utils.PatchMageStore(upgradeStoreName, upgradeNamespace, patch)).To(Succeed())
 
-			By("waiting for the operator to surface UpgradeReady=False, Reason=SetupUpgradeFailed")
-			// Generous timeout: the broken-image upgrade Job pod has
-			// to schedule (image already loaded → fast), run
-			// setup:upgrade (the shim exits 1 immediately), and
-			// because backoffLimit=1 the Job retries once before
-			// marking JobFailed=True. Each retry has its own backoff
-			// window kubelet imposes (~30-60s). Total realistic
-			// budget: 5-8 min. 12 min ceiling absorbs scheduling
-			// jitter on a busy kind cluster.
+			By("waiting for the operator to surface UpgradeReady=False, Reason=PermanentlyFailed")
+			// The operator recreates a failed upgrade Job five times
+			// before giving up (30s … 30m, ~47 min at the production
+			// schedule). BeforeAll runs the operator with
+			// --job-retry-backoff-scale=0.02, so the waits shrink to
+			// ~1 min in total; what remains is six Job runs (the shim
+			// exits 1 immediately, backoffLimit=1 adds one pod retry
+			// each). 12 min absorbs scheduling jitter on a busy kind
+			// cluster.
 			Eventually(func(g Gomega) {
 				cond, err := utils.GetMageStoreCondition(upgradeStoreName, upgradeNamespace, upgradeReadyCond)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -435,7 +497,7 @@ spec:
 			patch := fmt.Sprintf(`{"spec":{"image":{"tag":%q}}}`, upgradeTargetTag)
 			Expect(utils.PatchMageStore(upgradeStoreName, upgradeNamespace, patch)).To(Succeed())
 
-			By("asserting UpgradeReady stays False/SetupUpgradeFailed for a 30s window (lockstep refusal)")
+			By("asserting UpgradeReady stays False/PermanentlyFailed for a 30s window (lockstep refusal)")
 			// Consistently, not Eventually: the load-bearing assertion
 			// is that the operator does NOT transition during the
 			// post-revert window. ADR 008's lockstep contract: while

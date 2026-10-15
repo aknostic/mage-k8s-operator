@@ -48,6 +48,12 @@ closes the arc.
   (per-item table maps each gap to its Secret); admin URL
   randomization on `AdminSpec` not `SecuritySpec`
   (bootstrap-time install argument, not reconcile-time policy).
+- **Manager flag `--job-retry-backoff-scale`** (default `1`).
+  Multiplies the waits between retries of a failed one-shot Job
+  (30s, 2m, 5m, 10m, 30m). Meant for tests: the e2e suite runs the
+  operator at `0.02` so the upgrade failure path reaches
+  `PermanentlyFailed` in minutes instead of ~47. Values ≤ 0 are
+  rejected at startup.
 
 ### Changed
 
@@ -86,6 +92,23 @@ closes the arc.
 
 ### Fixed
 
+- **Stores without TLS install again.** Since v0.6.0 the bootstrap
+  Job passed `--base-url-secure=http://…` to `setup:install` when
+  `spec.routing.tls` was unset. Magento only accepts an `https://`
+  value there ("Parameter validation failed"), so every install
+  without TLS failed and the Job retried until its budget ran out.
+  The flag is now left out without TLS; Magento uses `--base-url`
+  for both (ADR 013 amendment).
+- **One-shot Jobs honour `spec.workloads.imagePullPolicy`.** The
+  bootstrap, SMTP probe, store-URLs, media-seed and upgrade Jobs
+  pinned `imagePullPolicy: Always` (since v0.6.3), so a store whose
+  image exists only on the nodes — loaded with `kind load docker-image`
+  or mirrored into an air-gapped cluster — never installed: the
+  bootstrap pod sat in `ErrImagePull`. The Jobs now use the same
+  policy as the workloads. The default stays `Always`, so stores that
+  don't set the field behave as before. `config/samples/` (used by the
+  quickstart's kind path) and the e2e upgrade test set
+  `imagePullPolicy: IfNotPresent`, since both use a kind-loaded image.
 - **HTTPRoute admin rule follows the resolved `backendFrontname`.**
   Pre-fix, `internal/controller/ensure_routing.go` baked literal
   `/admin` PathPrefix into the admin-tier rule regardless of

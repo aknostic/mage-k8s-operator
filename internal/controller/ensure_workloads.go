@@ -37,10 +37,15 @@ const (
 // deterministic when multiple workloads roll out in the same pass.
 var allWorkloadKinds = []workloadKind{workloadFrontend, workloadAdmin, workloadAPI}
 
-// workloadImagePullPolicy returns the pull policy that every workload
-// Deployment owned by this MageStore (frontend / admin / api workloads,
-// queue-consumer Deployments, Varnish) should write onto its primary
-// container. Default `PullAlways` defends against stale node-cached
+// workloadImagePullPolicy returns the pull policy for every container
+// the operator runs from the MageStore's image: the workload
+// Deployments (frontend / admin / api, queue consumers, Varnish) and
+// the one-shot Jobs (bootstrap, SMTP probe, store URLs, media seed,
+// upgrade). The Jobs used to pin `PullAlways`, which made a store
+// impossible to install from an image that only exists on the node
+// (kind-loaded or air-gapped).
+//
+// Default `PullAlways` defends against stale node-cached
 // layers when the reference image's mutable tag (e.g.
 // `:2.4.8-sampledata`) is rebuilt across releases — kubelet
 // re-resolves the digest on every pod start instead of trusting the

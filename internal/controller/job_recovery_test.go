@@ -306,6 +306,13 @@ var _ = Describe("recoverTerminalFailedJob", func() {
 				Expect(got).To(BeNumerically("<=", max), "trial %d: %s", i, got)
 			}
 		})
+
+		It("scales the schedule by JobBackoffScale (--job-retry-backoff-scale)", func() {
+			// recordedRand=0.5 → no jitter, so the result is nominal × scale.
+			r.JobBackoffScale = 0.02
+			Expect(r.backoffWithJitter(1)).To(Equal(600 * time.Millisecond))
+			Expect(r.backoffWithJitter(5)).To(Equal(36 * time.Second))
+		})
 	})
 
 	Context("nextJobAttemptRequeue", func() {
