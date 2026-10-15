@@ -206,10 +206,33 @@ var _ = Describe("buildBootstrapJob SMTP envFrom", func() {
 		}
 	})
 
-	It("uses imagePullPolicy: Always so customer image rebuilds under the same tag are picked up", func() {
+	It("defaults imagePullPolicy to Always so customer image rebuilds under the same tag are picked up", func() {
 		store := minimalStore()
 		job := r.buildBootstrapJob(store, "mystore-bootstrap", adminRef, frontnameRef, "")
 		Expect(job.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+	})
+
+	It("uses spec.workloads.imagePullPolicy for every one-shot Job", func() {
+		// An image that only exists on the node (kind load, air-gapped
+		// mirror) can never be pulled; with IfNotPresent the Jobs must
+		// use the node's copy like the workloads do.
+		store := minimalStore()
+		store.Spec.Workloads.ImagePullPolicy = corev1.PullIfNotPresent
+		policies := map[string]corev1.PullPolicy{
+			"bootstrap": r.buildBootstrapJob(store, "mystore-bootstrap", adminRef, frontnameRef, "").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"upgrade": r.buildUpgradeJob(store, "mystore-upgrade", "2.4.7", "2.4.8").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"store-urls": r.buildStoreURLsJob(store, "mystore-store-urls", "hash").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"smtp-probe": buildSMTPProbeJob(store, "mystore-smtp", "hash", "mystore-smtp-probe").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+			"media-seed": buildMediaSeedJob(store, "mystore-media-seed").
+				Spec.Template.Spec.Containers[0].ImagePullPolicy,
+		}
+		for job, policy := range policies {
+			Expect(policy).To(Equal(corev1.PullIfNotPresent), job)
+		}
 	})
 
 	It("mounts <store>-smtp envFrom (without optional: true) when spec.smtp.inline is set", func() {

@@ -171,6 +171,10 @@ spec:
     repository: %s
     tag: %q
   workloads:
+    # The reference image is kind-loaded, not in a registry; the
+    # default Always made every pod (and the bootstrap Job) fail with
+    # ErrImagePull.
+    imagePullPolicy: IfNotPresent
     frontend:
       replicas: 1
   database:

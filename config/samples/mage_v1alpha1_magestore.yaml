@@ -22,6 +22,11 @@ spec:
   # Same image across all three; only resource profiles differ in
   # production. See ADR 006 for naming and Ingress routing.
   workloads:
+    # The reference image is loaded onto the kind nodes with
+    # `kind load docker-image`, not pushed to a registry, so the
+    # default `Always` would try (and fail) to pull it. Use the node's
+    # copy instead; drop this line for registry-hosted images.
+    imagePullPolicy: IfNotPresent
     frontend:
       replicas: 1
     admin:

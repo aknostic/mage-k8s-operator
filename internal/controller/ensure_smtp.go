@@ -407,7 +407,7 @@ func buildSMTPProbeJob(store *magev1alpha1.MageStore, secretName, hash, name str
 					Containers: []corev1.Container{{
 						Name:            "probe",
 						Image:           image,
-						ImagePullPolicy: corev1.PullAlways,
+						ImagePullPolicy: workloadImagePullPolicy(store),
 						EnvFrom: []corev1.EnvFromSource{{
 							SecretRef: &corev1.SecretEnvSource{
 								LocalObjectReference: corev1.LocalObjectReference{Name: secretName},

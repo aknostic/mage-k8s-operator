@@ -795,12 +795,12 @@ type WorkloadsSpec struct {
 	// (kubelet cannot reach the registry on every pod start) or
 	// rate-limited registries (anonymous Docker Hub pulls); the
 	// operator does not validate digest-stability when this override
-	// is in effect. Applies to every workload Deployment the operator
-	// owns: frontend / admin / api workloads, the ~20 queue-consumer
-	// Deployments, and Varnish. One-shot Jobs (bootstrap, smtp probe,
-	// store-urls, media seed, upgrade) already pin `PullAlways`
-	// regardless of this setting — they need a fresh digest at job
-	// creation time.
+	// is in effect. Applies to every pod the operator runs from the
+	// store's image: frontend / admin / api workloads, the ~20
+	// queue-consumer Deployments, Varnish, and the one-shot Jobs
+	// (bootstrap, smtp probe, store-urls, media seed, upgrade). Use
+	// `IfNotPresent` or `Never` for images that exist only on the
+	// nodes, such as images loaded with `kind load docker-image`.
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	// +kubebuilder:default=Always
 	// +optional

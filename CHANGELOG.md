@@ -86,6 +86,16 @@ closes the arc.
 
 ### Fixed
 
+- **One-shot Jobs honour `spec.workloads.imagePullPolicy`.** The
+  bootstrap, SMTP probe, store-URLs, media-seed and upgrade Jobs
+  pinned `imagePullPolicy: Always` (since v0.6.3), so a store whose
+  image exists only on the nodes — loaded with `kind load docker-image`
+  or mirrored into an air-gapped cluster — never installed: the
+  bootstrap pod sat in `ErrImagePull`. The Jobs now use the same
+  policy as the workloads. The default stays `Always`, so stores that
+  don't set the field behave as before. `config/samples/` (used by the
+  quickstart's kind path) and the e2e upgrade test set
+  `imagePullPolicy: IfNotPresent`, since both use a kind-loaded image.
 - **HTTPRoute admin rule follows the resolved `backendFrontname`.**
   Pre-fix, `internal/controller/ensure_routing.go` baked literal
   `/admin` PathPrefix into the admin-tier rule regardless of

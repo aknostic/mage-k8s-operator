@@ -340,7 +340,7 @@ func buildMediaSeedJob(store *magev1alpha1.MageStore, name string) *batchv1.Job 
 					Containers: []corev1.Container{{
 						Name:            "seed",
 						Image:           image,
-						ImagePullPolicy: corev1.PullAlways,
+						ImagePullPolicy: workloadImagePullPolicy(store),
 						EnvFrom: []corev1.EnvFromSource{{
 							SecretRef: &corev1.SecretEnvSource{
 								LocalObjectReference: corev1.LocalObjectReference{Name: configSecretName(store)},

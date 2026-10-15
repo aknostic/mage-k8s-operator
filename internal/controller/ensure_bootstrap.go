@@ -513,7 +513,7 @@ func (r *MageStoreReconciler) buildBootstrapJob(store *magev1alpha1.MageStore, n
 					Containers: []corev1.Container{{
 						Name:            bootstrapContainer,
 						Image:           image,
-						ImagePullPolicy: corev1.PullAlways,
+						ImagePullPolicy: workloadImagePullPolicy(store),
 						WorkingDir:      "/app",
 						Command:         []string{"/bin/sh", "-c"},
 						Args:            []string{buildBootstrapScript(store)},

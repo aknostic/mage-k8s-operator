@@ -786,7 +786,7 @@ func (r *MageStoreReconciler) buildUpgradeJob(store *magev1alpha1.MageStore, nam
 					Containers: []corev1.Container{{
 						Name:            upgradeContainer,
 						Image:           image,
-						ImagePullPolicy: corev1.PullAlways,
+						ImagePullPolicy: workloadImagePullPolicy(store),
 						WorkingDir:      "/app",
 						Command:         []string{"/bin/sh", "-c"},
 						Args:            []string{upgradeScript},

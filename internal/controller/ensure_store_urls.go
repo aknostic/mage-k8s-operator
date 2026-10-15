@@ -287,7 +287,7 @@ func (r *MageStoreReconciler) buildStoreURLsJob(store *magev1alpha1.MageStore, n
 					Containers: []corev1.Container{{
 						Name:            "store-urls",
 						Image:           image,
-						ImagePullPolicy: corev1.PullAlways,
+						ImagePullPolicy: workloadImagePullPolicy(store),
 						EnvFrom: []corev1.EnvFromSource{{
 							SecretRef: &corev1.SecretEnvSource{
 								LocalObjectReference: corev1.LocalObjectReference{Name: configSecretName(store)},
