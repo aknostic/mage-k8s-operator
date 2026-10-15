@@ -71,6 +71,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var jobBackoffScale float64
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -89,6 +90,9 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.Float64Var(&jobBackoffScale, "job-retry-backoff-scale", 1,
+		"Multiplier for the waits between retries of a failed one-shot Job (30s, 2m, 5m, 10m, 30m at 1). "+
+			"Meant for tests; keep the default in production.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -96,6 +100,11 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if jobBackoffScale <= 0 {
+		setupLog.Error(nil, "--job-retry-backoff-scale must be greater than 0", "value", jobBackoffScale)
+		os.Exit(1)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -241,11 +250,12 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.MageStoreReconciler{
-		Client:       mgr.GetClient(),
-		Scheme:       mgr.GetScheme(),
-		Capabilities: caps,
-		RestConfig:   mgr.GetConfig(),
-		KubeClient:   kubeClient,
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Capabilities:    caps,
+		RestConfig:      mgr.GetConfig(),
+		KubeClient:      kubeClient,
+		JobBackoffScale: jobBackoffScale,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MageStore")
 		os.Exit(1)

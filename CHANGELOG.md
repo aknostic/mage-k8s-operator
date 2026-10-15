@@ -48,6 +48,12 @@ closes the arc.
   (per-item table maps each gap to its Secret); admin URL
   randomization on `AdminSpec` not `SecuritySpec`
   (bootstrap-time install argument, not reconcile-time policy).
+- **Manager flag `--job-retry-backoff-scale`** (default `1`).
+  Multiplies the waits between retries of a failed one-shot Job
+  (30s, 2m, 5m, 10m, 30m). Meant for tests: the e2e suite runs the
+  operator at `0.02` so the upgrade failure path reaches
+  `PermanentlyFailed` in minutes instead of ~47. Values ≤ 0 are
+  rejected at startup.
 
 ### Changed
 
