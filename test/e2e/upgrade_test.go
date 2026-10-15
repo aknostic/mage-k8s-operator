@@ -490,6 +490,14 @@ spec:
 				g.Expect(cond.Reason).To(Equal(reasonUpgradeFailed),
 					"expected Reason=%s, got %q", reasonUpgradeFailed, cond.Reason)
 			}).WithTimeout(12 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
+
+			By("verifying the Ready rollup reports the failed upgrade (not Ready=True)")
+			Eventually(func(g Gomega) {
+				cond, err := utils.GetMageStoreCondition(upgradeStoreName, upgradeNamespace, storeReadyCond)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cond.Status).To(Equal("False"), "Ready should be False while the upgrade has failed")
+				g.Expect(cond.Reason).To(Equal(reasonUpgradeFailed))
+			}).WithTimeout(time.Minute).WithPolling(5 * time.Second).Should(Succeed())
 		})
 
 		It("refuses to un-quiesce when spec.image.tag is reverted while the failed Job exists", func() {

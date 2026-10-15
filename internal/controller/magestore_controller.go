@@ -81,12 +81,13 @@ const (
 	// Upgrade-arc Reason vocabulary (ADR 008). UpgradeReady carries
 	// these values; the empty-baseline fresh-install case uses
 	// AwaitingUpgrade. UpgradeStarting and WorkloadRolloutPending are
-	// the in-flight values; SetupUpgradeFailed and CronQuiesceTimeout
-	// are the failure values. The literal "UpToDate" and
-	// "UpgradeComplete" Reasons live inline in ensure_upgrade.go
-	// because they're not part of the failure surface.
+	// the in-flight values; CronQuiesceTimeout is a failure value, and
+	// a failed upgrade Job reports the Job-recovery Reasons from
+	// job_recovery.go (RetryingFailedJob, then PermanentlyFailed; see
+	// upgradeHasFailed). The literal "UpToDate" and "UpgradeComplete"
+	// Reasons live inline in ensure_upgrade.go because they're not part
+	// of the failure surface.
 	ReasonUpgradeStarting        = "UpgradeStarting"
-	ReasonSetupUpgradeFailed     = "SetupUpgradeFailed"
 	ReasonCronQuiesceTimeout     = "CronQuiesceTimeout"
 	ReasonWorkloadRolloutPending = "WorkloadRolloutPending"
 	ReasonAwaitingUpgrade        = "AwaitingUpgrade"
@@ -517,12 +518,13 @@ func (r *MageStoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		readyCond.Reason = ReasonAwaitingBootstrap
 		readyCond.Message = bootCond.Message
 		store.Status.Phase = magev1alpha1.PhaseProvisioning
-	case upgCond.Status == metav1.ConditionFalse &&
-		(upgCond.Reason == ReasonSetupUpgradeFailed || upgCond.Reason == ReasonCronQuiesceTimeout):
-		// Terminal-failure paths from ensureUpgrade. The in-flight
+	case upgradeHasFailed(upgCond):
+		// Failure paths from ensureUpgrade. The in-flight
 		// paths (UpgradeStarting, WorkloadRolloutPending) already
 		// short-circuited the pipeline above with Requeue, so the
-		// rollup only sees terminal Reasons here.
+		// rollup only sees failure Reasons here — including
+		// RetryingFailedJob, which returns without a requeue and
+		// waits for the backoff wakeup.
 		readyCond.Status = metav1.ConditionFalse
 		readyCond.Reason = upgCond.Reason
 		readyCond.Message = upgCond.Message
@@ -738,4 +740,22 @@ func validateMageStoreSpec(store *magev1alpha1.MageStore) (string, error) {
 		)
 	}
 	return "", nil
+}
+
+// upgradeHasFailed reports whether UpgradeReady describes a failed
+// upgrade arc: the store stays fenced and quiesced until the retry
+// loop succeeds or an admin intervenes, so the Ready rollup must not
+// report Ready=True. A failed setup:upgrade Job surfaces the
+// Job-recovery Reasons (RetryingFailedJob between attempts,
+// PermanentlyFailed once the budget is spent); RecreatingFailedJob
+// requeues and never reaches the rollup.
+func upgradeHasFailed(c metav1.Condition) bool {
+	if c.Status != metav1.ConditionFalse {
+		return false
+	}
+	switch c.Reason {
+	case ReasonCronQuiesceTimeout, JobRecoveryRetryReason, JobRecoveryReason:
+		return true
+	}
+	return false
 }

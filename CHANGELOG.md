@@ -92,6 +92,16 @@ closes the arc.
 
 ### Fixed
 
+- **`Ready` no longer reports `True` while an upgrade has failed.**
+  The Ready rollup still looked for `UpgradeReady`
+  `Reason=SetupUpgradeFailed`, which nothing has set since the v0.6.2
+  Job-recovery loop; a failed upgrade reports `RetryingFailedJob` and
+  then `PermanentlyFailed`. A store sitting behind its maintenance
+  page with a failed upgrade therefore showed `Ready=True`. The
+  rollup now matches the current Reasons (and `CronQuiesceTimeout`),
+  sets `Ready=False` with the upgrade's Reason and `phase = Failed`.
+  `docs/operations/upgrades.md` describes the retry Reasons;
+  whether upgrades should be retried at all is open in #22.
 - **Stores without TLS install again.** Since v0.6.0 the bootstrap
   Job passed `--base-url-secure=http://…` to `setup:install` when
   `spec.routing.tls` was unset. Magento only accepts an `https://`
