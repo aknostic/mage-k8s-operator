@@ -22,16 +22,30 @@ been agreed, it is marked `[GAP: …]`.
 generates. The design is in
 [ADR 014](docs/internals/adr/014-security-baseline.md).
 
+Status of each item, from the `[Unreleased]` section of
+[`CHANGELOG.md`](CHANGELOG.md):
+
 - **NetworkPolicies** for generated workloads, through
-  `spec.security.networkPolicies`.
+  `spec.security.networkPolicies`. *Status: CRD shape only.* The
+  field is a placeholder; controller wiring is planned for later
+  v0.7.0 sessions.
 - **Workload `securityContext`** on every generated pod, through
-  `spec.security.workloadSecurityContext`.
+  `spec.security.workloadSecurityContext`. *Status: CRD shape
+  only.* The field is a placeholder; controller wiring is planned
+  for later v0.7.0 sessions.
 - **Admin URL randomisation.** A random `backendFrontname` is
   generated at first bootstrap and stored in the `<store>-admin`
-  Secret. Stores created on v0.6.x keep `/admin/` so existing
-  bookmarks keep working.
-- **First release on `ghcr.io`.** Until v0.7.0 is published, the
-  operator is built from source.
+  Secret. *Status: ships end to end*, including the routing-layer
+  fix.
+- **First release on `ghcr.io`.** *Status: not released.* The
+  chart bump and tag wait until the v0.7.0 work is complete. Until
+  then, the operator is built from source.
+
+**Upgrading from v0.6.x.** Moving an existing store to v0.7.0 does
+not switch on default-deny NetworkPolicies, non-root pods or a
+random admin URL. Stores created on v0.6.x keep `/admin/`, so
+existing bookmarks keep working. See the upgrade-safety rule in
+[ADR 014](docs/internals/adr/014-security-baseline.md).
 
 What is tested where today:
 
@@ -40,9 +54,6 @@ What is tested where today:
 | kind | Unit and envtest suites on every pull request; full e2e suite (including the upgrade arc) nightly and on demand | [`ci.yml`](.github/workflows/ci.yml), [`e2e.yml`](.github/workflows/e2e.yml) |
 | Scaleway Kapsule | Manual validation of a fresh install; the most recent recorded run is v0.6.3 | [ADR 014](docs/internals/adr/014-security-baseline.md) |
 | EKS, GKE, AKS | Not tested | |
-
-Progress on the v0.7.0 work is in the `[Unreleased]` section of
-[`CHANGELOG.md`](CHANGELOG.md).
 
 ## Beta
 
@@ -57,7 +68,7 @@ maintainers. `[GAP: sign-off on every criterion by both maintainers]`
 |---|---|---|
 | 1 | CRD `v1beta1`, with a tested conversion or migration path from `v1alpha1` | CRD is `v1alpha1` only |
 | 2 | Backup and restore documented and tested for the database and for media | Not owned by the operator; the [upgrade guide](docs/operations/upgrades.md) tells you to arrange your own backup |
-| 3 | Upgrade path tested across at least three Magento or Mage-OS versions | The reference image is Mage-OS 2.4.8-p4; `[GAP: list of versions to cover]` |
+| 3 | Upgrade path tested across at least three Magento or Mage-OS versions | The reference image is Magento 2.4.8-p4 via the Mage-OS mirror; `[GAP: list of versions to cover]` |
 | 4 | Tested on EKS, GKE, AKS and Scaleway Kapsule | Kapsule validated manually; the other three not tested |
 | 5 | Three adopters running the operator in staging | `[GAP: current count — see ADOPTERS.md]` |
 | 6 | Documented resource sizing | Not yet documented |
@@ -98,7 +109,7 @@ is a starting point for the maintainers, not a commitment.
 
 - **Propose or vote on an idea:** open a post in the **Ideas**
   category of GitHub Discussions.
-  `[GAP: Discussions is not confirmed as enabled on the repository]`
+  `[GAP: Discussions is currently disabled on the repository; enabling it is Matthijs's call]`
 - **Propose a design change:** read the
   [ADRs](docs/internals/adr/), then open an issue before a pull
   request, as described in [`CONTRIBUTING.md`](CONTRIBUTING.md).
