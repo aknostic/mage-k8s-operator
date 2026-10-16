@@ -7,14 +7,18 @@ mage-operator is alpha software. The README says not to use it in
 production yet; this page says what has to be true before that
 changes, so you can judge how far away it is and help close the gap.
 
-Dates are targets, not promises. Where a date or criterion has not
-been agreed, it is marked `[GAP: …]`.
+This roadmap is open to the public. Everything marked **proposed**
+is a draft for you to change: read it, and tell us what is missing,
+wrong or too cautious. See [Open questions](#open-questions) and
+[How to influence the roadmap](#how-to-influence-the-roadmap).
+
+Dates are targets, not promises.
 
 | Stage | Version | Target | CRD |
 |---|---|---|---|
 | [Now](#now--v07x) | v0.7.x | In progress | `v1alpha1` |
-| [Beta](#beta) | v0.x, to be named | `[GAP: target date — Q1 2027 proposed in the launch plan, not yet agreed by the maintainers]` | `v1beta1` |
-| [1.0](#10) | v1.0.0 | `[GAP: no date set]` | `v1` `[GAP: confirm CRD version at 1.0]` |
+| [Beta](#beta) | v0.x, to be named | Q1 2027 (proposed, [open question 1](#open-questions)) | `v1beta1` (proposed) |
+| [1.0](#10) | v1.0.0 | No date yet | To be decided |
 
 ## Now — v0.7.x
 
@@ -57,40 +61,56 @@ What is tested where today:
 
 ## Beta
 
-**Target:** `[GAP: target date — Q1 2027 proposed, not yet agreed]`.
+**Target:** Q1 2027, proposed. See [open question 1](#open-questions).
 
 Beta means the API is stable enough that you can plan around it, and
 the operational basics are documented and tested. The criteria below
-are proposed in the launch plan; they are not yet agreed by the
-maintainers. `[GAP: sign-off on every criterion by both maintainers]`
+are **proposed**. They have not been agreed, and they can change:
+see [How to influence the roadmap](#how-to-influence-the-roadmap).
 
-| # | Criterion | Today |
+| # | Criterion (proposed) | Today |
 |---|---|---|
 | 1 | CRD `v1beta1`, with a tested conversion or migration path from `v1alpha1` | CRD is `v1alpha1` only |
 | 2 | Backup and restore documented and tested for the database and for media | Not owned by the operator; the [upgrade guide](docs/operations/upgrades.md) tells you to arrange your own backup |
-| 3 | Upgrade path tested across at least three Magento or Mage-OS versions | The reference image is Magento 2.4.8-p4 via the Mage-OS mirror; `[GAP: list of versions to cover]` |
+| 3 | Upgrade path tested across at least three Magento or Mage-OS versions | The reference image is Magento 2.4.8-p4 via the Mage-OS mirror. Which versions to cover is [open question 2](#open-questions) |
 | 4 | Tested on EKS, GKE, AKS and Scaleway Kapsule | Kapsule validated manually; the other three not tested |
-| 5 | Three adopters running the operator in staging | `[GAP: current count — see ADOPTERS.md]` |
+| 5 | Three adopters running the operator in staging | See [`ADOPTERS.md`](ADOPTERS.md) for the current list |
 | 6 | Documented resource sizing | Not yet documented |
 
-These criteria also define "production user" for this project: an
-adopter who runs a store on the operator in a production
-environment, once beta is reached. `[GAP: confirm this definition
-with the maintainers]`
+## Open questions
+
+These are open for you to answer. Propose an answer with a pull
+request against this file, or open an issue. A concrete proposal
+with your reasoning is the most useful form. The maintainers decide;
+see [How decisions are made](#how-decisions-are-made).
+
+1. **Beta date.** Is Q1 2027 realistic for the six criteria above?
+   What would you move, drop or add?
+2. **Versions to test.** Which three or more Magento or Mage-OS
+   versions should the upgrade path cover? Which one do you run?
+3. **Adopter count.** Is three adopters in staging the right bar for
+   beta? Does a staging adopter count the same as a production one?
+4. **"Production user".** Proposed definition: an adopter who runs a
+   store on the operator in a production environment, once beta is
+   reached. Does that match how you would use the term?
+5. **1.0 criteria.** The list under [1.0](#10) is a starting point.
+   What would you need to see before running the operator in
+   production for a customer?
 
 ## 1.0
 
-**Target:** `[GAP: no date set]`.
+**Target:** no date yet.
 
 1.0 means we would run the operator in production for a customer.
-The launch plan has not yet defined the criteria, so the list below
-is a starting point for the maintainers, not a commitment.
-`[GAP: criteria to be proposed and agreed by the maintainers]`
+No criteria have been agreed. The list below is **proposed** and is
+the subject of [open question 5](#open-questions).
 
 - Every beta criterion met, with the CRD frozen.
-- `[GAP: minimum period of beta with production users, and how many]`
-- `[GAP: support policy — which operator and Magento versions receive fixes]`
-- `[GAP: security review or equivalent, and who carries it out]`
+- A minimum period of beta with production users: how long, and how
+  many users, is open.
+- A support policy: which operator and Magento versions receive
+  fixes is open.
+- A security review or equivalent: who carries it out is open.
 - Upgrade between operator releases documented and tested.
 
 ## Non-goals
@@ -107,14 +127,29 @@ is a starting point for the maintainers, not a commitment.
 
 ## How to influence the roadmap
 
+- **Edit this file.** Pull requests against `ROADMAP.md` are
+  welcome: a changed criterion, a new open question, a better
+  answer to an existing one. Follow
+  [`CONTRIBUTING.md`](CONTRIBUTING.md). For anything beyond a small
+  fix, open an issue first so we can agree the approach.
+- **Answer an open question.** Use a pull request or an issue, as
+  described under [Open questions](#open-questions).
 - **Propose or vote on an idea:** open a post in the **Ideas**
   category of GitHub Discussions.
   `[GAP: Discussions is currently disabled on the repository; enabling it is Matthijs's call]`
+  Until then, open an issue.
 - **Propose a design change:** read the
   [ADRs](docs/internals/adr/), then open an issue before a pull
-  request, as described in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+  request.
 - **Tell us what you run:** add yourself to
   [`ADOPTERS.md`](ADOPTERS.md). What adopters need shapes what
   comes next.
 - **Report a security issue:** use [`SECURITY.md`](SECURITY.md), not
   a public issue.
+
+### How decisions are made
+
+The maintainers decide what goes into this roadmap and into the
+operator. We read every proposal and say why we accept or decline
+it. Any change to a beta or 1.0 criterion is recorded in an
+[ADR](docs/internals/adr/), so the reasoning stays public.
