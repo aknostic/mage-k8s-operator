@@ -9,9 +9,9 @@ End-to-end installation on a Kubernetes cluster. Two paths:
   cluster to a working store. This is the canonical path; jump to
   [Step 1](#step-1--install-the-dependency-operators).
 - **You don't have an image yet** and want to try the operator
-  end-to-end. The repo ships a reference image you can build and
-  use locally; ~30 minutes for the first build (one-time). Skip to
-  [Using the reference image on kind](#using-the-reference-image-on-kind).
+  end-to-end. The project publishes a reference image on `ghcr.io`,
+  so there is nothing to build. Skip to
+  [Using the reference image](#using-the-reference-image).
 
 ## What you'll have at the end
 
@@ -48,8 +48,10 @@ You need these installed locally:
 - A Kubernetes cluster you can `kubectl apply` against. For a
   local cluster: [`kind`](https://kind.sigs.k8s.io/) v0.23+ and
   Docker (or compatible runtime).
-- Docker and `make`, to build the operator image — needed until
-  v0.7.0 is published on `ghcr.io`.
+
+The operator image, Helm chart and reference image are public on
+`ghcr.io`: no login and no build. Docker and `make` are only needed
+to [build from source](#build-the-operator-from-source-contributors).
 
 ## Step 1 — install the dependency operators
 
@@ -86,22 +88,19 @@ the operator emits HTTPRoute and Gateway resources unconditionally.
 
 ## Step 2 — install the mage-operator
 
-Until v0.7.0 is published on `ghcr.io`, build the operator from
-source. On kind:
+Install the chart from `ghcr.io`. Replace `X.Y.Z` with the release
+version shown on the
+[Releases page](https://github.com/aknostic/mage-k8s-operator/releases):
 
 ```bash
-git clone https://github.com/aknostic/mage-k8s-operator.git
-cd mage-k8s-operator
-make docker-build IMG=mage-operator:dev
-kind load docker-image mage-operator:dev --name mage-operator-dev
-helm install mage-operator charts/mage-operator \
-  --set image.repository=mage-operator --set image.tag=dev \
+helm install mage-operator \
+  oci://ghcr.io/aknostic/charts/mage-operator \
+  --version X.Y.Z \
   --namespace mage-operator-system --create-namespace
 ```
 
-On any other cluster, push the image to a registry the cluster can
-pull from (`make docker-build docker-push IMG=<registry>/mage-operator:dev`)
-and set `image.repository` / `image.tag` to match.
+To check the signatures first, see
+[Cosign verification](../README.md#cosign-verification).
 
 Verify:
 
@@ -207,44 +206,80 @@ kubectl exec deployment/store-frontend -- \
   bin/magento module:disable Magento_TwoFactorAuth Magento_AdminAdobeImsTwoFactorAuth
 ```
 
-## Using the reference image on kind
+## Using the reference image
 
-If you don't have your own Magento image yet, the repo includes a
-reference image at `magento-test-image/` that satisfies the
-operator's image contract. Useful for trying the operator
-end-to-end before investing in your own image build.
+If you don't have your own Magento image yet, use the reference
+image the project publishes at `ghcr.io/aknostic/magento-reference`.
+It satisfies the operator's image contract, so you can try the
+operator end-to-end before building your own image. It is a demo
+image, not a production one. Allow about 4 GB of disk space for it.
 
-The first build takes ~25-30 minutes (composer pulls ~600
-packages; `setup:di:compile` and `setup:static-content:deploy`
-are CPU-bound). Allow ~4 GB of disk space.
-
-```bash
-# Clone the repo (skip if you already did in Step 2).
-git clone https://github.com/aknostic/mage-k8s-operator.git
-cd mage-k8s-operator
-
-# Build and load the image.
-docker build -t mage-operator/magento-reference:2.4.8 magento-test-image/
-kind load docker-image mage-operator/magento-reference:2.4.8 \
-  --name mage-operator-dev
-
-# Apply the bundled demo MageStore (uses the reference image,
-# enables every feature: workloads + consumers + cron + varnish).
-kubectl apply -k config/samples/
-```
-
-Then wait for Ready as in [Step 4](#step-4--wait-for-ready) — note
-the demo CR is in the `demo` namespace, not `default`:
+With the operator installed (Step 2), apply a MageStore that uses it:
 
 ```bash
-kubectl -n demo wait --for=condition=Ready magestore/store --timeout=10m
+kubectl apply -f - <<'YAML'
+apiVersion: mage.aknostic.com/v1alpha1
+kind: MageStore
+metadata:
+  name: store
+  namespace: default
+spec:
+  image:
+    repository: ghcr.io/aknostic/magento-reference
+    tag: "2.4.8"
+  workloads:
+    frontend:
+      replicas: 1
+  bootstrap:
+    admin:
+      email: admin@example.com
+YAML
 ```
+
+Then wait for Ready as in [Step 4](#step-4--wait-for-ready):
+
+```bash
+kubectl wait --for=condition=Ready magestore/store --timeout=10m
+```
+
+> **Mage-OS:** [GAP: Mage-OS with the reference image not tested]
 
 The image-contract specification at
 [`image-contract.md`](image-contract.md) is the canonical
 reference for building your own image. Fork
 `magento-test-image/` as a starting template, or roll your own
 from scratch.
+
+## Build the operator from source (contributors)
+
+Only needed to run an unreleased change. See also
+[`CONTRIBUTING.md`](../CONTRIBUTING.md). On kind:
+
+```bash
+git clone https://github.com/aknostic/mage-k8s-operator.git
+cd mage-k8s-operator
+make docker-build IMG=mage-operator:dev
+kind load docker-image mage-operator:dev --name mage-operator-dev
+helm install mage-operator charts/mage-operator \
+  --set image.repository=mage-operator --set image.tag=dev \
+  --namespace mage-operator-system --create-namespace
+```
+
+On any other cluster, push the image to a registry the cluster can
+pull from (`make docker-build docker-push IMG=<registry>/mage-operator:dev`)
+and set `image.repository` / `image.tag` to match.
+
+To build the reference image yourself (about 25-30 minutes the first
+time: composer pulls ~600 packages and `setup:di:compile` is
+CPU-bound) and use the bundled demo MageStore:
+
+```bash
+docker build -t mage-operator/magento-reference:2.4.8 magento-test-image/
+kind load docker-image mage-operator/magento-reference:2.4.8 \
+  --name mage-operator-dev
+kubectl apply -k config/samples/
+kubectl -n demo wait --for=condition=Ready magestore/store --timeout=10m
+```
 
 ## Use your own image (replacing the reference image)
 

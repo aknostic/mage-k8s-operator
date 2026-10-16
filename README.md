@@ -29,14 +29,13 @@ their logic; the Valkey cache is run by the operator itself.
 
 ## Status
 
-**v0.6.x — alpha.** The latest release is v0.6.4, published before
-the project moved to GitHub; v0.7.0 will be the first release on
-`ghcr.io`, and until then the operator is built from source. It
-runs end-to-end on kind and has been validated on a real Scaleway
-Kapsule cluster. v0.7.0 — a security baseline (NetworkPolicies,
-workload `securityContext`, admin URL randomization) — is in
-progress; see the `[Unreleased]` section of
-[`CHANGELOG.md`](CHANGELOG.md).
+**Alpha (v0.x).** Release vX.Y.Z is the first on `ghcr.io`: the
+operator image and the Helm chart install from the registry, with no
+source build. Earlier releases (up to v0.6.4) were published before
+the project moved to GitHub and are no longer publicly available. The
+operator runs end-to-end on kind and has been validated on a real
+Scaleway Kapsule cluster. See [`CHANGELOG.md`](CHANGELOG.md) for
+what each release contains and what is still in progress.
 
 The CRD shape is not yet frozen — breaking field changes are gated
 to minor version bumps during the v0.x line and documented in the
@@ -59,18 +58,11 @@ curl -sSfL https://raw.githubusercontent.com/aknostic/mage-k8s-operator/main/scr
 # docs/prerequisites.md for the per-operator install commands and
 # version pins.
 
-# 2. Build and install the operator. Until v0.7.0 is published on
-#    ghcr.io, it is built from source; on kind:
-git clone https://github.com/aknostic/mage-k8s-operator.git
-cd mage-k8s-operator
-make docker-build IMG=mage-operator:dev
-kind load docker-image mage-operator:dev --name mage-operator-dev
-helm install mage-operator charts/mage-operator \
-  --set image.repository=mage-operator --set image.tag=dev \
+# 2. Install the operator from ghcr.io (no login needed).
+helm install mage-operator \
+  oci://ghcr.io/aknostic/charts/mage-operator \
+  --version X.Y.Z \
   --namespace mage-operator-system --create-namespace
-#    On any other cluster, push the image to a registry it can pull
-#    from (make docker-build docker-push IMG=<registry>/mage-operator:dev)
-#    and set image.repository / image.tag to match.
 
 # 3. Apply a minimal MageStore pointing at your image.
 kubectl apply -f - <<'EOF'
@@ -108,12 +100,25 @@ For production / HA configuration:
 
 ### Don't have a Magento image yet?
 
-The repo includes a reference image at `magento-test-image/` that
-satisfies the contract — useful for trying the operator end-to-end
-on a local kind cluster without building your own image first.
-The reference-image walkthrough lives in the [quickstart](docs/quickstart.md#using-the-reference-image-on-kind);
-allow ~30 minutes for the first build (composer install +
-`setup:di:compile` + `setup:static-content:deploy` are CPU-bound).
+A prebuilt reference image that satisfies the contract is published
+at `ghcr.io/aknostic/magento-reference:2.4.8`. Use it as `spec.image`
+in step 3 to try the operator end-to-end without building anything:
+
+```yaml
+  image:
+    repository: ghcr.io/aknostic/magento-reference
+    tag: "2.4.8"
+```
+
+It is a demo image, not a production one. The walkthrough is in the
+[quickstart](docs/quickstart.md#using-the-reference-image). Its
+Dockerfile is in `magento-test-image/` if you want to fork it.
+
+### Build from source (contributors)
+
+To run an unreleased change, build the operator yourself. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+[quickstart](docs/quickstart.md#build-the-operator-from-source-contributors).
 
 ## Documentation
 
@@ -151,17 +156,21 @@ ADRs, release flow, SOPS workflow, and local SMTP setup.
 
 ## Cosign verification
 
-Release container images (on `ghcr.io` from v0.7.0) are signed
-with cosign. Verify before pulling into production:
+Release container images and Helm charts on `ghcr.io` are signed
+with cosign. Verify before pulling into production. The public key
+(`cosign.pub`) is in this repo and attached to each GitHub Release.
 
 ```bash
+# Operator image (the image tag keeps the "v" prefix).
 cosign verify --key cosign.pub \
   ghcr.io/aknostic/mage-operator:vX.Y.Z
+
+# Helm chart (the chart version has no "v" prefix).
+cosign verify --key cosign.pub \
+  ghcr.io/aknostic/charts/mage-operator:X.Y.Z
 ```
 
-The public key (`cosign.pub`) is in this repo. From v0.2.0
-onward, the Helm chart is signed alongside the image; release
-flow detail at
+Release flow detail at
 [`docs/internals/releasing.md`](docs/internals/releasing.md).
 
 ## Contributing

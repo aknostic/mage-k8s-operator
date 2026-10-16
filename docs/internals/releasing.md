@@ -148,13 +148,14 @@ after the first release, check that the `mage-operator` image and
 the `charts/mage-operator` chart are public in the organization's
 package settings.
 
-### Releases before v0.7.0
+### Releases before the first ghcr.io release
 
 v0.1.0 – v0.6.4 were published by the project's former pipeline to
-a registry that is no longer public. v0.7.0 is the first release on
-ghcr.io; until it ships, the README and quickstart build the
-operator from source. When cutting v0.7.0, switch both back to
-`helm install mage-operator oci://ghcr.io/aknostic/charts/mage-operator`.
+a registry that is no longer public. The first release cut with
+`release.yml` is the first on ghcr.io. The README and quickstart
+install from the registry (`helm install mage-operator
+oci://ghcr.io/aknostic/charts/mage-operator --version X.Y.Z`) and
+keep the source build as a secondary path for contributors.
 
 ## Image and chart signing (cosign)
 
