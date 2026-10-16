@@ -10,6 +10,7 @@ Run Magento, Adobe Commerce or Mage-OS stores on Kubernetes from one `MageStore`
 > - **Works:** end-to-end on kind; validated on a real Scaleway Kapsule cluster.
 > - **Not tested yet:** other clusters, including EKS, GKE, AKS, Hetzner and bare metal. [GAP: confirm the exact list of untested platforms with the maintainers.]
 > - **Not for production yet.**
+> - **Install:** built from source until the first `ghcr.io` release (v0.7.0).
 > - **CRD stability:** breaking changes only in minor versions, documented in [`CHANGELOG.md`](CHANGELOG.md).
 > - **Next:** see the [roadmap](ROADMAP.md).
 
@@ -20,7 +21,7 @@ Run Magento, Adobe Commerce or Mage-OS stores on Kubernetes from one `MageStore`
 
 ## How it fits together
 
-You create a `MageStore`. The operator composes four existing operators and owns the rest.
+You create a `MageStore`. The operator can compose four existing operators (or use your own, or external services) and owns the rest. Valkey is run by the operator: a single instance by default, with Sentinel from 3 replicas.
 
 ```mermaid
 flowchart LR
@@ -45,12 +46,12 @@ flowchart LR
 
 ## Who this is for
 
-**For you if you run:**
+**Intended for you if you run:**
 
 - Many shops, or the same shop in dev, staging and production with the same code path.
 - Your own Kubernetes: Hetzner, Scaleway, bare metal, EKS, GKE or AKS.
 
-**Not for you if you:**
+**Not intended for you if you:**
 
 - Run a single shop that is happy on a managed host.
 - Use Adobe Commerce Cloud. ECE-Tools mode was dropped on purpose ([ADR 002](docs/internals/adr/002-config-emission-modes.md)).
@@ -60,7 +61,7 @@ flowchart LR
 
 | Option | What it is | A fit when |
 | --- | --- | --- |
-| Hand-written manifests | You write and maintain every Kubernetes object | You run one shop and want full control |
+| Hand-written manifests | You write and maintain every Kubernetes object | |
 | PHOENIX-MEDIA Helm chart | A Helm chart for Magento | [GAP: confirm scope and maintenance status] |
 | Managed Magento hosting (for example Hypernode) | A hosting provider runs the platform | You do not want to run Kubernetes |
 | Adobe Commerce Cloud | Adobe's hosted platform | You are on Adobe Commerce Cloud; mage-operator does not support it |
