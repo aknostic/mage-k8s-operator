@@ -1,14 +1,89 @@
 # mage-operator
 
+Run Magento, Adobe Commerce or Mage-OS stores on Kubernetes from one `MageStore` resource. For teams running many shops or several environments.
+
+<!-- PLACEHOLDER (card 3): demo GIF, max 30 s. docs/media/demo.gif does not exist yet; this image shows as broken until card 3 adds it. -->
+![Demo: applying a MageStore and watching it become Ready](docs/media/demo.gif)
+
+> **Status: alpha (v0.6.x).**
+>
+> - **Works:** end-to-end on kind; validated on a real Scaleway Kapsule cluster.
+> - **Not tested yet:** other clusters, including EKS, GKE, AKS, Hetzner and bare metal. [GAP: confirm the exact list of untested platforms with the maintainers.]
+> - **Not for production yet.**
+> - **CRD stability:** breaking changes only in minor versions, documented in [`CHANGELOG.md`](CHANGELOG.md).
+> - **Next:** see the [roadmap](ROADMAP.md).
+
+> Not affiliated with, endorsed by, or sponsored by Adobe Inc.
+> "Magento" and "Adobe Commerce" are trademarks of Adobe Inc.
+>
+> Not related to Mage.ai.
+
+## How it fits together
+
+You create a `MageStore`. The operator composes four existing operators and owns the rest.
+
+```mermaid
+flowchart LR
+    store["MageStore"] --> op["mage-operator"]
+    op --> composed
+    op --> owned
+    subgraph composed["Composed (run by other operators)"]
+        mariadb["mariadb-operator"]
+        opensearch["opensearch-k8s-operator"]
+        rabbitmq["rabbitmq-cluster-operator"]
+        envoy["Envoy Gateway"]
+    end
+    subgraph owned["Owned by mage-operator"]
+        valkey["Valkey + Sentinel"]
+        php["PHP-FPM / NGINX workloads"]
+        consumers["Consumers"]
+        cron["Cron"]
+        varnish["Varnish"]
+        jobs["Bootstrap / upgrade Jobs"]
+    end
+```
+
+## Who this is for
+
+**For you if you run:**
+
+- Many shops, or the same shop in dev, staging and production with the same code path.
+- Your own Kubernetes: Hetzner, Scaleway, bare metal, EKS, GKE or AKS.
+
+**Not for you if you:**
+
+- Run a single shop that is happy on a managed host.
+- Use Adobe Commerce Cloud. ECE-Tools mode was dropped on purpose ([ADR 002](docs/internals/adr/002-config-emission-modes.md)).
+- Need production-ready software today. This is alpha.
+
+## How it compares
+
+| Option | What it is | A fit when |
+| --- | --- | --- |
+| Hand-written manifests | You write and maintain every Kubernetes object | You run one shop and want full control |
+| PHOENIX-MEDIA Helm chart | A Helm chart for Magento | [GAP: confirm scope and maintenance status] |
+| Managed Magento hosting (for example Hypernode) | A hosting provider runs the platform | You do not want to run Kubernetes |
+| Adobe Commerce Cloud | Adobe's hosted platform | You are on Adobe Commerce Cloud; mage-operator does not support it |
+| mage-operator | An operator driven by one `MageStore` resource | You run many shops or environments on your own Kubernetes, and accept alpha |
+
+Facts checked 16 October 2026: the Bitnami Magento chart was deprecated in September 2024, `graycoreio/magento2-helm` was archived in April 2025, and we found no other maintained Magento operator. Shopware has an official one.
+
+## Getting help
+
+- Questions: [GitHub Discussions (Q&A)](https://github.com/aknostic/mage-k8s-operator/discussions). [GAP: Discussions is currently disabled on the repository; enable it before launch.]
+- Bugs: [GitHub issues](https://github.com/aknostic/mage-k8s-operator/issues).
+- Vulnerabilities: follow [`SECURITY.md`](SECURITY.md). Do not use public issues.
+
+## Commercial support
+
+mage-operator is built and maintained by Aknostic, a platform engineering company in Utrecht. If you want help moving Magento to Kubernetes or running it, talk to the engineers who built this: [aknostic.com](https://[GAP: confirm aknostic.com landing page]/?utm_source=github&utm_medium=readme&utm_campaign=mage-operator-launch).
+
+## Why use this
+
 Run your Magento, Adobe Commerce, or Mage-OS store on Kubernetes
 declaratively. You bring a container image; the operator owns the
 Kubernetes shape — database, search, cache, queue, workloads,
 routing, consumers, cron, media storage, optional Varnish.
-
-> Not affiliated with, endorsed by, or sponsored by Adobe Inc.
-> "Magento" and "Adobe Commerce" are trademarks of Adobe Inc.
-
-## Why use this
 
 Running Magento on Kubernetes for one shop is a solved problem:
 write a Helm chart with your specific assumptions baked in.
