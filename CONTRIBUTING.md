@@ -12,6 +12,39 @@ ADR 004 (seeded-but-extractable dependencies) and ADR 006
 Security issues go through [`SECURITY.md`](SECURITY.md), not public
 issues.
 
+## Contributing without writing Go
+
+Most of what makes this operator useful is Magento knowledge, not
+Go. You can help without touching `internal/`:
+
+- **Run it on your cluster and file what breaks.** Follow the
+  [quickstart](docs/quickstart.md), then open an issue with your
+  `MageStore` manifest (secrets removed), the operator version, the
+  output of `kubectl describe magestore <name>`, and the operator
+  logs. [`docs/troubleshooting.md`](docs/troubleshooting.md) explains
+  the condition reasons you will see.
+- **Review the Magento defaults.** The operator ships defaults for
+  cron groups ([`internal/controller/ensure_cron.go`](internal/controller/ensure_cron.go)),
+  queue consumers ([`internal/controller/ensure_consumers.go`](internal/controller/ensure_consumers.go),
+  [`internal/magento/consumers.go`](internal/magento/consumers.go))
+  and the Varnish VCL ([`internal/magento/vcl.go`](internal/magento/vcl.go)).
+  If a default is wrong for current Magento or Mage-OS, open an issue
+  with the reason and a source link. Issues labelled
+  `magento-expertise` are written for this.
+- **Improve the docs.** Fix a command that no longer works, add a
+  walkthrough for the cluster you run, or clarify a page that cost you
+  time. Docs-only PRs need no Go toolchain and no CHANGELOG entry.
+- **Send an adoption report.** Tell us what you run: Magento, Adobe
+  Commerce or Mage-OS version, cluster type, store size, and what
+  worked or did not. Open an issue titled `Adoption report: <short
+  description>`. Leave out anything you consider private.
+
+You don't need to run the 60–90 minute e2e suite. A maintainer runs it with the `run-e2e` label.
+
+Look for [`good first issue`](https://github.com/aknostic/mage-k8s-operator/labels/good%20first%20issue)
+and [`help wanted`](https://github.com/aknostic/mage-k8s-operator/labels/help%20wanted)
+to find a starting point.
+
 ## Development setup
 
 You need:
