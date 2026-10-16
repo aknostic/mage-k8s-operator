@@ -1,5 +1,5 @@
 name: Adoption report
-description: "I'm running mage-operator." Tell us how, so we know what to improve.
+description: "I'm running mage-operator. Tell us how, so we know what to improve."
 labels: ["adoption"]
 body:
   - type: markdown

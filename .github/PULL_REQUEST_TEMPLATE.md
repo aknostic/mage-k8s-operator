@@ -4,7 +4,7 @@
 
 ## Checklist
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/aknostic/mage-k8s-operator/blob/main/CONTRIBUTING.md).
 
 - [ ] The commit messages follow the existing style (`area: summary`, for example `docs:`, `ci:`, `deps:`).
 - [ ] I added an entry under `[Unreleased]` in `CHANGELOG.md`, or this PR is docs- or CI-only and a maintainer can add the `skip-changelog` label.
