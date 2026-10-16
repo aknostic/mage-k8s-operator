@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or help request
+    url: https://github.com/aknostic/mage-k8s-operator/discussions/categories/q-a
+    about: Ask how to use mage-operator in GitHub Discussions (Q&A).
+  - name: Security vulnerability
+    url: https://github.com/aknostic/mage-k8s-operator/blob/main/SECURITY.md
+    about: Report security issues privately, as described in SECURITY.md. Do not open a public issue.

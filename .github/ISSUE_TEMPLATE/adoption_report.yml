@@ -1,0 +1,55 @@
+name: Adoption report
+description: "I'm running mage-operator." Tell us how, so we know what to improve.
+labels: ["adoption"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports like this feed [ADOPTERS.md](https://github.com/aknostic/mage-k8s-operator/blob/main/ADOPTERS.md). Share only what you are comfortable having public, and leave out anything confidential.
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Local or development
+        - Staging
+        - Production
+    validations:
+      required: true
+  - type: input
+    id: stores
+    attributes:
+      label: Number of stores
+      description: How many `MageStore` resources you run.
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Kubernetes provider or distribution
+      placeholder: kind, Kapsule, self-managed, and so on
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Operator version
+      placeholder: v0.6.4
+  - type: input
+    id: platform
+    attributes:
+      label: Magento, Adobe Commerce or Mage-OS version
+  - type: textarea
+    id: missing
+    attributes:
+      label: What is missing or got in your way?
+  - type: checkboxes
+    id: listing
+    attributes:
+      label: Listing
+      options:
+        - label: You may list my organisation (name below) in ADOPTERS.md.
+  - type: input
+    id: organisation
+    attributes:
+      label: Organisation name (only if you ticked the box above)
