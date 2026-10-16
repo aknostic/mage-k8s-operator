@@ -39,7 +39,8 @@ Go. You can help without touching `internal/`:
   worked or did not. Open an issue titled `Adoption report: <short
   description>`. Leave out anything you consider private.
 
-You don't need to run the 60–90 minute e2e suite. A maintainer runs it with the `run-e2e` label.
+You don't need to run the 60–90 minute e2e suite. A maintainer runs it
+with the `run-e2e` label.
 
 Look for [`good first issue`](https://github.com/aknostic/mage-k8s-operator/labels/good%20first%20issue)
 and [`help wanted`](https://github.com/aknostic/mage-k8s-operator/labels/help%20wanted)
