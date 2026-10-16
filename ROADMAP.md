@@ -150,6 +150,5 @@ the subject of [open question 5](#open-questions).
 ### How decisions are made
 
 The maintainers decide what goes into this roadmap and into the
-operator. We read every proposal and say why we accept or decline
-it. Any change to a beta or 1.0 criterion is recorded in an
+operator. Any change to a beta or 1.0 criterion is recorded in an
 [ADR](docs/internals/adr/), so the reasoning stays public.
