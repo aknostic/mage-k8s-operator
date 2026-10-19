@@ -84,7 +84,8 @@ mage-operator is built and maintained by Aknostic, a platform engineering compan
 
 If you have a Magento container image that honors the
 [image contract](docs/image-contract.md), you can have a working
-store on Kubernetes in ~5 minutes:
+store on Kubernetes in about half an hour. Most of that is the
+first start of OpenSearch and `setup:install`:
 
 ```bash
 # 1. Install the dependency operators (MariaDB, OpenSearch,
@@ -122,13 +123,18 @@ spec:
   workloads:
     frontend:
       replicas: 1
+  database:
+    mariaDb: {}
+  search:
+    openSearch:
+      jvmHeap: 256m  # fits a kind cluster; leave out on a real cluster (default 512m)
   bootstrap:
     admin:
       email: admin@example.com
 EOF
 
-# 4. Wait for Ready.
-kubectl wait --for=condition=Ready magestore/store --timeout=10m
+# 4. Wait for Ready. On kind the first start takes 20–30 minutes.
+kubectl wait --for=condition=Ready magestore/store --timeout=45m
 ```
 
 The admin password is operator-generated; retrieve it with

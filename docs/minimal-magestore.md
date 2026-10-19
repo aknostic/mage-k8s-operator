@@ -26,19 +26,26 @@ spec:
   workloads:
     frontend:
       replicas: 1
+  database:
+    mariaDb: {}
+  search:
+    openSearch:
+      jvmHeap: 256m  # fits a kind cluster; leave out on a real cluster (default 512m)
   bootstrap:
     admin:
       email: admin@example.com
 ```
 
-Without any `spec.database`, `spec.search`, or `spec.cache`
-stanza, the operator provisions the inline default for each
-tier (MariaDB via `mariadb-operator`, OpenSearch via
-`opensearch-k8s-operator`, Valkey run by the operator itself). All
-are dev-sized — single replicas (three for OpenSearch, which can't
-run as one node, see [#21](https://github.com/aknostic/mage-k8s-operator/issues/21)),
-small PVCs — and adequate for a
-local kind cluster or a non-production test deployment.
+A fresh install needs `spec.database` and `spec.search`: the
+store doesn't become Ready without a database, and `setup:install`
+needs a search backend. `mariaDb: {}` and `openSearch: {}` run
+both inline (MariaDB via `mariadb-operator`, OpenSearch via
+`opensearch-k8s-operator`). Both are dev-sized — one MariaDB
+replica, three OpenSearch nodes (a single node never forms a
+cluster, see [#21](https://github.com/aknostic/mage-k8s-operator/issues/21)),
+small PVCs — and adequate for a local kind cluster or a
+non-production test deployment. `jvmHeap: 256m` keeps OpenSearch
+within a kind cluster's memory; leave it out on a real cluster.
 
 The admin password is operator-generated; retrieve it after
 `Ready=True`:
@@ -96,12 +103,12 @@ StoreInstalled condition would surface
 The minimal examples above are intentionally bare. Realistic
 deployments add at least:
 
-- **Search**, externally or inline. Magento 2.4.x hard-requires
-  a search backend; the fresh-install example relies on the
-  inline default. For external OpenSearch, see
+- **External search.** The fresh-install example runs OpenSearch
+  inline. For an external OpenSearch endpoint, see
   [`magestore-reference.md` § spec.search](magestore-reference.md#specsearch).
-- **Cache** (Redis-protocol). Heavily used by Magento; inline
-  defaults to a single-instance dev-sized Valkey.
+- **Cache** (Redis-protocol). Heavily used by Magento. Add
+  `cache: {redis: {}}` for a single-instance, dev-sized Valkey that
+  the operator runs itself.
 - **Queue** (RabbitMQ). Optional — Magento runs in synchronous-
   processing mode without it, fine for dev. Required if you
   enable consumers.

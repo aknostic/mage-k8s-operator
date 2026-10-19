@@ -326,7 +326,7 @@ Service):
    OpenSearchCluster per ADR 004 and its `setup:install` Job per
    ADR 005).
 5. `kubectl apply -f config/samples/frontend-service.yaml`
-6. `kubectl -n demo wait --for=condition=Ready magestore/store --timeout=10m`
+6. `kubectl -n demo wait --for=condition=Ready magestore/store --timeout=45m`
 7. `kubectl -n demo port-forward svc/store-frontend 8080:8080` and
    `curl http://localhost:8080/admin`
 

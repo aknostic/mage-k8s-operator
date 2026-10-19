@@ -5,8 +5,9 @@
 
 End-to-end installation on a Kubernetes cluster. Two paths:
 
-- **You have your own Magento image.** ~5 minutes from a fresh
-  cluster to a working store. This is the canonical path; jump to
+- **You have your own Magento image.** About half an hour from a
+  fresh cluster to a working store, most of it the first start of
+  OpenSearch and `setup:install`. This is the canonical path; jump to
   [Step 1](#step-1--install-the-dependency-operators).
 - **You don't have an image yet** and want to try the operator
   end-to-end. The repo ships a reference image you can build and
@@ -127,6 +128,11 @@ spec:
   workloads:
     frontend:
       replicas: 1
+  database:
+    mariaDb: {}
+  search:
+    openSearch:
+      jvmHeap: 256m  # fits a kind cluster; leave out on a real cluster (default 512m)
   bootstrap:
     admin:
       email: admin@example.com
@@ -135,6 +141,11 @@ spec:
 ```bash
 kubectl apply -f store.yaml
 ```
+
+A fresh install needs `spec.database` and `spec.search`: the store
+doesn't become Ready without a database, and `setup:install` needs
+a search backend. `mariaDb: {}` and `openSearch: {}` let the
+operator run both in the cluster.
 
 For more example shapes (pre-bootstrapped database, multi-store,
 S3 media, Varnish enabled, consumers + cron, custom resources):
@@ -148,8 +159,11 @@ operator does not currently emit pull secrets via the CRD.
 ## Step 4 — wait for Ready
 
 ```bash
-kubectl wait --for=condition=Ready magestore/store --timeout=10m
+kubectl wait --for=condition=Ready magestore/store --timeout=45m
 ```
+
+On kind the first start takes 20–30 minutes: OpenSearch forms a
+three-node cluster, then `setup:install` runs.
 
 Status conditions tell you what's happening at any moment:
 
@@ -237,7 +251,7 @@ Then wait for Ready as in [Step 4](#step-4--wait-for-ready) — note
 the demo CR is in the `demo` namespace, not `default`:
 
 ```bash
-kubectl -n demo wait --for=condition=Ready magestore/store --timeout=10m
+kubectl -n demo wait --for=condition=Ready magestore/store --timeout=45m
 ```
 
 The image-contract specification at
