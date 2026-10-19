@@ -47,6 +47,7 @@ across operator releases; if we need to change one, it's an ADR.
 | `MAGENTO_DATABASE_USERNAME` | MariaDB CR root (inline/ref, Phase 1 shortcut) or `external.credentialsSecretRef[username]` | Inline/ref will become a dedicated Magento user via mariadb-operator's `User`/`Grant` CRDs. |
 | `MAGENTO_DATABASE_PASSWORD` | MariaDB-operator-generated Secret (inline/ref) or `external.credentialsSecretRef[password]` | Rotated at source → operator re-emits → `envFrom` pushes new value to pods.            |
 | `MAGENTO_CRYPT_KEY`         | Generated once per store, preserved across reconciles | Format is `base64<base64-of-32-bytes>` per [ADR 003](adr/003-crypt-key-format.md). Use verbatim — do not decode. |
+| `MAGENTO_BACKEND_FRONTNAME` | `<store>-admin` Secret, key `backendFrontname`. Set as a separate `env` entry, not through the config Secret. | Admin URL path segment. Set on stores installed by v0.7.0 or later (random unless `spec.bootstrap.admin.backendFrontname` is set). Absent on adopted stores and stores installed before v0.7.0: fall back to `admin`, as the canonical `env.php` below does. |
 | `MAGE_MODE`                 | Hard-coded `production` today                         | Will be driven by `spec.deploymentMode` once that field lands.                           |
 | `MAGENTO_OPENSEARCH_HOST`   | `spec.search.openSearch` (inline) or `opensearchRef`  | Resolved via `ensureSearch`; only emitted once `SearchReady=True`. Hostname only.        |
 | `MAGENTO_OPENSEARCH_PORT`   | same                                                  | Default `9200`.                                                                          |
@@ -196,7 +197,7 @@ if ($mediaBucket = getenv('MAGENTO_MEDIA_STORAGE_BUCKET')) {
 }
 
 return [
-    'backend' => ['frontName' => 'admin'],
+    'backend' => ['frontName' => getenv('MAGENTO_BACKEND_FRONTNAME') ?: 'admin'],
     'crypt' => ['key' => getenv('MAGENTO_CRYPT_KEY')],
     'db' => [
         'connection' => [

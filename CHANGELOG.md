@@ -158,6 +158,17 @@ closes the arc.
   Added an `apk add --no-cache git` before-script and pinned
   `GIT_DEPTH: "0"` so the diff against
   `$CI_MERGE_REQUEST_TARGET_BRANCH_SHA` always resolves.
+- **The random admin path reaches the workload pods.** Admin URL
+  randomisation passed the generated `backendFrontname` only to the
+  bootstrap Job's `setup:install`, while the workload pods kept the
+  image's `env.php` with `frontName => admin`. The HTTPRoute sent
+  `/<frontname>` to the admin tier, where Magento still expected
+  `/admin`. Every pod that runs Magento from the store image now gets
+  `MAGENTO_BACKEND_FRONTNAME` from the `<store>-admin` Secret
+  (optional, so adopted and pre-v0.7.0 stores keep `admin`), and the
+  reference and canonical `env.php` read it with `admin` as the
+  fallback. Custom images need the same one-line change; see
+  `docs/image-contract.md`.
 
 ### Security
 

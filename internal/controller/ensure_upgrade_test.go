@@ -202,6 +202,7 @@ var _ = Describe("ensureUpgrade", func() {
 			c := job.Spec.Template.Spec.Containers[0]
 			Expect(c.Image).To(Equal("registry.example.com/test/magento:2.4.8"))
 			Expect(c.ImagePullPolicy).To(Equal(corev1.PullAlways))
+			expectAdminFrontnameEnv(c, store.Name)
 			Expect(c.Args).To(HaveLen(1))
 			Expect(c.Args[0]).To(ContainSubstring("setup:upgrade"))
 			Expect(c.Args[0]).To(ContainSubstring("cache:flush"))

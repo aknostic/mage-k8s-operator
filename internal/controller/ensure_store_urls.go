@@ -293,6 +293,7 @@ func (r *MageStoreReconciler) buildStoreURLsJob(store *magev1alpha1.MageStore, n
 								LocalObjectReference: corev1.LocalObjectReference{Name: configSecretName(store)},
 							},
 						}},
+						Env:     adminFrontnameEnv(store),
 						Command: []string{"sh", "-c"},
 						Args:    []string{r.buildStoreURLsScript(store)},
 					}},

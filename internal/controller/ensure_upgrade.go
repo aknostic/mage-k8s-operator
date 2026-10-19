@@ -791,6 +791,7 @@ func (r *MageStoreReconciler) buildUpgradeJob(store *magev1alpha1.MageStore, nam
 						Command:         []string{"/bin/sh", "-c"},
 						Args:            []string{upgradeScript},
 						EnvFrom:         upgradeEnvFrom,
+						Env:             adminFrontnameEnv(store),
 					}},
 				},
 			},

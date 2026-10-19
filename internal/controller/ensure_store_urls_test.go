@@ -123,6 +123,7 @@ var _ = Describe("ensureStoreURLs", func() {
 			Expect(container.ImagePullPolicy).To(Equal(corev1.PullAlways))
 			Expect(container.Command).To(Equal([]string{"sh", "-c"}))
 			Expect(container.EnvFrom[0].SecretRef.Name).To(Equal(store.Name + "-config"))
+			expectAdminFrontnameEnv(container, store.Name)
 
 			// restartPolicy per ADR 013.
 			Expect(job.Spec.Template.Spec.RestartPolicy).To(Equal(corev1.RestartPolicyOnFailure))

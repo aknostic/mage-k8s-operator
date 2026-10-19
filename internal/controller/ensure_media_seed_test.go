@@ -185,6 +185,7 @@ var _ = Describe("ensureMediaSeed", func() {
 			Expect(container.Name).To(Equal("seed"))
 			Expect(container.Image).To(Equal("registry.example.com/magento:2.4.8"))
 			Expect(container.ImagePullPolicy).To(Equal(corev1.PullAlways))
+			expectAdminFrontnameEnv(container, store.Name)
 			Expect(container.Command).To(Equal([]string{"bash", "-c"}))
 			Expect(container.Args[0]).To(ContainSubstring("set -euo pipefail"))
 			Expect(container.Args[0]).To(ContainSubstring("cp -rn /app/pub/media-baked/."))

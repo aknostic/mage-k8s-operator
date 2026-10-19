@@ -94,7 +94,7 @@ if ($rabbitHost = getenv('MAGENTO_RABBITMQ_HOST')) {
 }
 
 return [
-    'backend' => ['frontName' => 'admin'],
+    'backend' => ['frontName' => getenv('MAGENTO_BACKEND_FRONTNAME') ?: 'admin'],
     'crypt' => ['key' => getenv('MAGENTO_CRYPT_KEY')],
     'db' => [
         'connection' => [
