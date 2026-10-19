@@ -1,0 +1,20 @@
+name: Question
+description: Ask how to use mage-operator, or whether it fits your setup.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [docs](https://github.com/aknostic/mage-k8s-operator/tree/main/docs) and [troubleshooting](https://github.com/aknostic/mage-k8s-operator/blob/main/docs/troubleshooting.md) first; your answer may already be there. Remove passwords, keys and other secrets from anything you paste.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to do, and what have you tried so far?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Operator version, Kubernetes distribution, and your Magento, Adobe Commerce or Mage-OS version, if relevant.
