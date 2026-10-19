@@ -89,12 +89,15 @@ jobs:
           EMAIL_PATTERN='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
           ALLOWED_TEST_DOMAINS='@([A-Za-z0-9._-]+\.)?(example\.com|example\.test|example\.org|localhost)\b'
           ALLOWED_INFRA='(git@github\.com|@users\.noreply\.github\.com)\b'
+          # Role address, used as the Code of Conduct contact.
+          ALLOWED_ROLE='\bcontact@aknostic\.com\b'
           MATCHES=$(grep -rEn "$EMAIL_PATTERN" \
             --include='*.yaml' --include='*.yml' --include='*.go' \
             --include='*.md' --include='*.php' --include='*.sh' \
             --exclude-dir=vendor --exclude-dir=.git . \
             | grep -vE "$ALLOWED_TEST_DOMAINS" \
-            | grep -vE "$ALLOWED_INFRA" || true)
+            | grep -vE "$ALLOWED_INFRA" \
+            | grep -vE "$ALLOWED_ROLE" || true)
           if [ -n "$MATCHES" ]; then
             echo "::error::Emails outside the allowed test domains found:"
             echo "$MATCHES"
