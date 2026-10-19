@@ -334,6 +334,7 @@ var _ = Describe("ensureConsumers", func() {
 			Expect(depList.Items).NotTo(BeEmpty())
 			for _, dep := range depList.Items {
 				Expect(dep.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways), dep.Name)
+				expectAdminFrontnameEnv(dep.Spec.Template.Spec.Containers[0], store.Name)
 			}
 		})
 

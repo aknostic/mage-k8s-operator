@@ -191,10 +191,12 @@ subsequent requests serve from Varnish.
 For the admin panel:
 
 ```bash
-# Operator-generated admin password lives in the per-store admin Secret.
+# The operator-generated admin password and admin URL live in the
+# per-store admin Secret. The admin path is random on fresh stores.
 kubectl get secret store-admin -o jsonpath='{.data.password}' | base64 -d; echo
+kubectl get secret store-admin -o jsonpath='{.data.adminUrl}' | base64 -d; echo
 
-# Open http://localhost:8080/admin in a browser.
+# Open the admin URL in a browser.
 # Username: admin
 # Password: the value above
 ```

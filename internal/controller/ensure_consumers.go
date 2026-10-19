@@ -250,6 +250,7 @@ func (r *MageStoreReconciler) ensureConsumerDeployment(ctx context.Context, stor
 				"--max-messages=20000",
 			},
 			EnvFrom: consumerEnvFrom,
+			Env:     adminFrontnameEnv(store),
 			VolumeMounts: []corev1.VolumeMount{
 				{Name: mediaVolumeName, MountPath: mediaMountPath},
 			},

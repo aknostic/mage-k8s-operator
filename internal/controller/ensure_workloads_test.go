@@ -747,6 +747,7 @@ var _ = Describe("ensureRouting", func() {
 			var dep appsv1.Deployment
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "store-frontend", Namespace: namespace}, &dep)).To(Succeed())
 			Expect(dep.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+			expectAdminFrontnameEnv(dep.Spec.Template.Spec.Containers[0], store.Name)
 		})
 
 		It("propagates an explicit IfNotPresent override to the magento container", func() {

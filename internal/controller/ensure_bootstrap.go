@@ -28,6 +28,11 @@ const (
 	adminSecretAdminURLKey         = "adminUrl"
 	bootstrapContainer             = "setup-install"
 
+	// adminFrontnameEnvVar carries the admin backend frontname to every
+	// pod that runs Magento from the image's env.php. See
+	// adminFrontnameEnv.
+	adminFrontnameEnvVar = "MAGENTO_BACKEND_FRONTNAME"
+
 	// adminBackendFrontnameLength is the random URL-safe length the
 	// operator generates when AdminSpec.BackendFrontname is unset on a
 	// fresh store. Adobe Commerce hardening guide treats "randomize
@@ -599,6 +604,30 @@ func (r *MageStoreReconciler) resolveAdminFrontname(ctx context.Context, store *
 		return string(v), nil
 	}
 	return existingStoreBackendFrontname, nil
+}
+
+// adminFrontnameEnv is the env var that tells the image's env.php which
+// admin backend frontname to use, so Magento serves the admin on the
+// same path ensureRouting sends to the admin tier. setup:install writes
+// the frontname only into the bootstrap Job's own env.php, which the
+// workload pods never see.
+//
+// The value comes straight from the `<store>-admin` Secret. The ref is
+// optional: when the Secret or key is absent (adopted stores, stores
+// from before v0.7.0) the variable stays unset and env.php falls back to
+// `admin`, matching resolveAdminFrontname.
+func adminFrontnameEnv(store *magev1alpha1.MageStore) []corev1.EnvVar {
+	optional := true
+	return []corev1.EnvVar{{
+		Name: adminFrontnameEnvVar,
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: store.Name + adminSecretSuffix},
+				Key:                  adminSecretBackendFrontnameKey,
+				Optional:             &optional,
+			},
+		},
+	}}
 }
 
 // newAdminBackendFrontname produces a random URL-safe path segment

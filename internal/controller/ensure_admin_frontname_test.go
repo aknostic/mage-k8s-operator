@@ -437,3 +437,25 @@ var _ = Describe("MageStore CRD validation — AdminSpec.BackendFrontname", func
 		Expect(err.Error()).To(ContainSubstring("backendFrontname"))
 	})
 })
+
+// expectAdminFrontnameEnv asserts that a Magento container reads the admin
+// frontname from the `<store>-admin` Secret, so the image's env.php serves
+// the admin on the same path the HTTPRoute sends to the admin tier.
+func expectAdminFrontnameEnv(c corev1.Container, storeName string) {
+	GinkgoHelper()
+	var found *corev1.EnvVar
+	for i := range c.Env {
+		if c.Env[i].Name == adminFrontnameEnvVar {
+			found = &c.Env[i]
+		}
+	}
+	Expect(found).NotTo(BeNil(), "container %q has no %s env var", c.Name, adminFrontnameEnvVar)
+	Expect(found.ValueFrom).NotTo(BeNil())
+	ref := found.ValueFrom.SecretKeyRef
+	Expect(ref).NotTo(BeNil())
+	Expect(ref.Name).To(Equal(storeName + "-admin"))
+	Expect(ref.Key).To(Equal("backendFrontname"))
+	Expect(ref.Optional).NotTo(BeNil())
+	Expect(*ref.Optional).To(BeTrue(),
+		"adopted stores and stores installed before v0.7.0 have no backendFrontname key")
+}

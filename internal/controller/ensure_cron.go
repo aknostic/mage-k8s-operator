@@ -216,6 +216,7 @@ func (r *MageStoreReconciler) ensureCronJob(ctx context.Context, store *magev1al
 			Command:   []string{"bin/magento"},
 			Args:      []string{"cron:run", "--group=" + group},
 			EnvFrom:   cronEnvFrom,
+			Env:       adminFrontnameEnv(store),
 			Resources: resources,
 		}
 		cj.Spec.JobTemplate.Spec.Template.Spec.Containers = []corev1.Container{container}

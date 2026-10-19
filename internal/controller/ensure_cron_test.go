@@ -65,6 +65,7 @@ var _ = Describe("ensureCron", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "store-cron-" + group, Namespace: namespace}, &cj)).To(Succeed())
 			Expect(cj.Spec.Schedule).To(Equal("* * * * *"))
 			Expect(cj.Spec.ConcurrencyPolicy).To(Equal(batchv1.AllowConcurrent))
+			expectAdminFrontnameEnv(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0], store.Name)
 		}
 
 		var indexJob batchv1.CronJob

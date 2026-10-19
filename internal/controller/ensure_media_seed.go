@@ -346,6 +346,7 @@ func buildMediaSeedJob(store *magev1alpha1.MageStore, name string) *batchv1.Job 
 								LocalObjectReference: corev1.LocalObjectReference{Name: configSecretName(store)},
 							},
 						}},
+						Env: adminFrontnameEnv(store),
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "media",
 							MountPath: mediaMountPath,

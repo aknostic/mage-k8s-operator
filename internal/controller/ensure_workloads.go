@@ -349,6 +349,7 @@ func (r *MageStoreReconciler) ensureWorkloadDeployment(ctx context.Context, stor
 			ImagePullPolicy: workloadImagePullPolicy(store),
 			Ports:           []corev1.ContainerPort{{ContainerPort: 8080, Name: "http"}},
 			EnvFrom:         envFrom,
+			Env:             adminFrontnameEnv(store),
 		}
 		if spec.Resources != nil {
 			container.Resources = *spec.Resources
