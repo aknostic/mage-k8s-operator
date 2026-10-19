@@ -261,14 +261,6 @@ func (r *MageStoreReconciler) ensureBootstrap(ctx context.Context, store *magev1
 			Message: "spec.bootstrap is unset; operator assumes an already-installed store",
 		}, nil
 	}
-	if !dependenciesReady {
-		return metav1.Condition{
-			Type:    ConditionStoreInstalled,
-			Status:  metav1.ConditionFalse,
-			Reason:  "AwaitingDependencies",
-			Message: "holding setup:install until database, search, and config Secret are ready",
-		}, nil
-	}
 
 	// setup:install is destructive on re-run. Once the condition is True,
 	// the operator must never create another Job or look at the existing
@@ -279,10 +271,26 @@ func (r *MageStoreReconciler) ensureBootstrap(ctx context.Context, store *magev1
 	// source of truth lives there rather than in Job.Status to keep the
 	// contract simple: MageStore.status is what gates reconcile, nothing
 	// else.
+	//
+	// This check must come before the dependency gate. Otherwise a
+	// dependency outage on an installed store returns
+	// AwaitingDependencies, the caller overwrites StoreInstalled=True
+	// with it, and once the dependency recovers (and the completed Job
+	// has been garbage-collected) a fresh bootstrap Job runs
+	// setup:install against the live database.
 	for _, c := range store.Status.Conditions {
 		if c.Type == ConditionStoreInstalled && c.Status == metav1.ConditionTrue {
 			return c, nil
 		}
+	}
+
+	if !dependenciesReady {
+		return metav1.Condition{
+			Type:    ConditionStoreInstalled,
+			Status:  metav1.ConditionFalse,
+			Reason:  "AwaitingDependencies",
+			Message: "holding setup:install until database, search, and config Secret are ready",
+		}, nil
 	}
 
 	// Admin backend-frontname must resolve BEFORE ensureAdminPassword:
