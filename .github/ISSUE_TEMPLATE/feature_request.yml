@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a change or addition to mage-operator.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first; the proposal comes second. If you are unsure whether something belongs in the operator, check the non-goals in [ROADMAP.md](https://github.com/aknostic/mage-k8s-operator/blob/main/ROADMAP.md#non-goals) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What would you like the operator to do? A sketch of the `MageStore` fields involved helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and workarounds
+      description: What have you tried or considered?
+  - type: input
+    id: adr
+    attributes:
+      label: Relevant ADR
+      description: Link to an [ADR](https://github.com/aknostic/mage-k8s-operator/tree/main/docs/internals/adr) this touches, if any. ADR 004 and ADR 006 are the ones most proposals run into.
