@@ -92,6 +92,16 @@ closes the arc.
 
 ### Fixed
 
+- **An installed store never runs `setup:install` again.**
+  `ensureBootstrap` checked whether dependencies were ready before it
+  checked whether the store was already installed. A database,
+  search, cache, queue or SMTP outage on an installed store therefore
+  flipped `StoreInstalled` to `False` (`AwaitingDependencies`), and
+  once the dependency recovered after the completed bootstrap Job had
+  been garbage-collected, the operator created a new one: `rm env.php`
+  and `setup:install` against the live database. The installed check
+  now comes first, so `StoreInstalled=True` sticks. Covered by an
+  envtest spec.
 - **`scripts/dev-k8s-setup.sh` works with Helm 4.** Helm 4 (now
   Homebrew's default) applies the Envoy Gateway chart's bundled
   Gateway API CRDs with server-side apply, which conflicted with the
