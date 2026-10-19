@@ -625,7 +625,7 @@ func (r *MageStoreReconciler) restoreFromQuiesce(ctx context.Context, store *mag
 		if !ok {
 			continue
 		}
-		saved, err := strconv.Atoi(savedStr)
+		saved, err := strconv.ParseInt(savedStr, 10, 32)
 		if err != nil {
 			return fmt.Errorf("parse %s on %s: %w", upgradeSavedReplicasAnnotation, dep.Name, err)
 		}
