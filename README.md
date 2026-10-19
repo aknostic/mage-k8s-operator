@@ -1,48 +1,84 @@
 # mage-operator
 
-Run your Magento, Adobe Commerce, or Mage-OS store on Kubernetes
-declaratively. You bring a container image; the operator owns the
-Kubernetes shape — database, search, cache, queue, workloads,
-routing, consumers, cron, media storage, optional Varnish.
+Run Magento, Adobe Commerce or Mage-OS stores on Kubernetes from one `MageStore` resource. For teams running many shops or several environments.
+
+You bring a container image; the operator owns the Kubernetes shape: database, search, cache, queue, workloads, routing, consumers, cron, media storage and optional Varnish.
+
+> **Status: alpha (v0.6.x).**
+>
+> - **Works:** end-to-end on kind; validated on a real Scaleway Kapsule cluster.
+> - **In progress:** testing on EKS.
+> - **Not tested yet:** GKE, AKS, Hetzner, bare metal and other clusters.
+> - **Not for production yet.**
+> - **Install:** built from source. v0.7.0 will be the first release on `ghcr.io`; it has no date yet.
+> - **CRD stability:** breaking changes only in minor versions, documented in [`CHANGELOG.md`](CHANGELOG.md).
+> - **Next:** see the [roadmap](ROADMAP.md).
 
 > Not affiliated with, endorsed by, or sponsored by Adobe Inc.
 > "Magento" and "Adobe Commerce" are trademarks of Adobe Inc.
+>
+> Not related to Mage.ai.
 
-## Why use this
+## How it fits together
 
-Running Magento on Kubernetes for one shop is a solved problem:
-write a Helm chart with your specific assumptions baked in.
-Running it for many shops, or across dev / staging / prod with the
-same code path, is not — everyone ends up with a slightly
-different Helm chart, duplicating decisions about MariaDB
-provisioning, Redis layout, consumer Deployments, cron groups,
-Varnish VCL, multi-store dispatch, upgrade orchestration, and
-public-edge TLS.
+You create a `MageStore`. The operator can compose four existing operators (or use your own, or external services) and owns the rest. Valkey is run by the operator: a single instance by default, with Sentinel from 3 replicas.
 
-This operator lifts those decisions into a single CRD. You
-describe *what* you want — a `MageStore` with N frontend
-replicas, M consumer workers, S3 media, two storefront hosts,
-your image — and the operator owns the *how*. It composes
-existing operators (`mariadb-operator`, `opensearch-k8s-operator`,
-`rabbitmq-cluster-operator`, Envoy Gateway) rather than embedding
-their logic; the Valkey cache is run by the operator itself.
+```mermaid
+flowchart LR
+    store["MageStore"] --> op["mage-operator"]
+    op --> composed
+    op --> owned
+    subgraph composed["Composed (run by other operators)"]
+        mariadb["mariadb-operator"]
+        opensearch["opensearch-k8s-operator"]
+        rabbitmq["rabbitmq-cluster-operator"]
+        envoy["Envoy Gateway"]
+    end
+    subgraph owned["Owned by mage-operator"]
+        valkey["Valkey + Sentinel"]
+        php["PHP-FPM / NGINX workloads"]
+        consumers["Consumers"]
+        cron["Cron"]
+        varnish["Varnish"]
+        jobs["Bootstrap / upgrade Jobs"]
+    end
+```
 
-## Status
+## Who this is for
 
-**v0.6.x — alpha.** The latest release is v0.6.4, published before
-the project moved to GitHub; v0.7.0 will be the first release on
-`ghcr.io`, and until then the operator is built from source. It
-runs end-to-end on kind and has been validated on a real Scaleway
-Kapsule cluster. v0.7.0 — a security baseline (NetworkPolicies,
-workload `securityContext`, admin URL randomization) — is in
-progress; see the `[Unreleased]` section of
-[`CHANGELOG.md`](CHANGELOG.md).
+**Intended for you if you run:**
 
-The CRD shape is not yet frozen — breaking field changes are gated
-to minor version bumps during the v0.x line and documented in the
-CHANGELOG.
+- Many shops, or the same shop in dev, staging and production with the same code path.
+- Your own Kubernetes: Hetzner, Scaleway, bare metal, EKS, GKE or AKS.
 
-**Don't use this in production yet.**
+**Not intended for you if you:**
+
+- Run a single shop that is happy on a managed host.
+- Use Adobe Commerce Cloud. ECE-Tools mode was dropped on purpose ([ADR 002](docs/internals/adr/002-config-emission-modes.md)).
+- Need production-ready software today. This is alpha.
+
+## How it compares
+
+| Option | What it is | A fit when |
+| --- | --- | --- |
+| Hand-written manifests | You write and maintain every Kubernetes object | You want full control and are happy to maintain it |
+| [PHOENIX-MEDIA Helm chart](https://github.com/PHOENIX-MEDIA/magento2-helm) | The most established Helm chart for Magento | You run a single shop and want a mature chart |
+| Managed Magento hosting (for example Hypernode) | A hosting provider runs the platform | You do not want to run Kubernetes |
+| Adobe Commerce Cloud | Adobe's hosted platform | You are on Adobe Commerce Cloud; mage-operator does not support it |
+| mage-operator | An operator driven by one `MageStore` resource | You run many shops or environments on your own Kubernetes, and accept alpha |
+
+Facts checked 16 October 2026: the Bitnami Magento chart was deprecated in September 2024, `graycoreio/magento2-helm` was archived in April 2025, and we found no other maintained Magento operator. Shopware has an official one.
+
+## Getting help
+
+- Questions: open a [question](https://github.com/aknostic/mage-k8s-operator/issues/new?template=question.yml).
+- Bugs: open a [bug report](https://github.com/aknostic/mage-k8s-operator/issues/new?template=bug_report.yml).
+- Running it somewhere? Send an [adoption report](https://github.com/aknostic/mage-k8s-operator/issues/new?template=adoption_report.yml) or add yourself to [`ADOPTERS.md`](ADOPTERS.md).
+- Vulnerabilities: follow [`SECURITY.md`](SECURITY.md). Do not use public issues.
+
+## Commercial support
+
+mage-operator is built and maintained by Aknostic, a platform engineering company. If you want help moving Magento to Kubernetes or running it, talk to the engineers who built this: [aknostic.com](https://aknostic.com/?utm_source=github&utm_medium=readme&utm_campaign=mage-operator-launch).
 
 ## Quick install
 
@@ -174,9 +210,11 @@ naming + Gateway API routing). Match the commit-message style of
 the existing log.
 
 Local development setup, tests and the PR checklist are in
-[`CONTRIBUTING.md`](CONTRIBUTING.md); the release flow and ADRs
-live under [`docs/internals/`](docs/internals/). To report a
-security issue, see [`SECURITY.md`](SECURITY.md).
+[`CONTRIBUTING.md`](CONTRIBUTING.md), including ways to help
+without writing Go; the release flow and ADRs live under
+[`docs/internals/`](docs/internals/). To report a security issue,
+see [`SECURITY.md`](SECURITY.md). Everyone taking part follows the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
