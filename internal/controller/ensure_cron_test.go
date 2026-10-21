@@ -73,6 +73,36 @@ var _ = Describe("ensureCron", func() {
 		Expect(memLimit.String()).To(Equal("2Gi"))
 	})
 
+	It("honours the Always default of spec.workloads.imagePullPolicy on cron pods (#33)", func() {
+		store.Spec.Cron = &magev1alpha1.CronSpec{Enabled: true}
+		Expect(k8sClient.Create(ctx, store)).To(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "store", Namespace: namespace}, store)).To(Succeed())
+
+		cond, err := reconciler.ensureCron(ctx, store, true, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+
+		var cj batchv1.CronJob
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "store-cron-default", Namespace: namespace}, &cj)).To(Succeed())
+		Expect(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways),
+			"workloadImagePullPolicy falls back to Always when the field is unset")
+	})
+
+	It("uses spec.workloads.imagePullPolicy on cron pods when overridden (#33)", func() {
+		store.Spec.Cron = &magev1alpha1.CronSpec{Enabled: true}
+		store.Spec.Workloads.ImagePullPolicy = corev1.PullIfNotPresent
+		Expect(k8sClient.Create(ctx, store)).To(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "store", Namespace: namespace}, store)).To(Succeed())
+
+		cond, err := reconciler.ensureCron(ctx, store, true, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+
+		var cj batchv1.CronJob
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "store-cron-default", Namespace: namespace}, &cj)).To(Succeed())
+		Expect(cj.Spec.JobTemplate.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
+	})
+
 	It("skips groups with disabled: true override", func() {
 		store.Spec.Cron = &magev1alpha1.CronSpec{
 			Enabled: true,
