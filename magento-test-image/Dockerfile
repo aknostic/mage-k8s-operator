@@ -16,8 +16,13 @@
 # ---------------------------------------------------------------------------
 # Stage 1 — composer install + di:compile + static-content:deploy.
 # Produces /app with a ready-to-serve Magento codebase.
+#
+# Both stages pin a PHP patch release rather than the floating
+# `8.3-fpm-bookworm` tag, so a stale local cache can't silently build
+# on a vulnerable PHP. 8.3.36 fixes PHP2Shell (CVE-2026-109618 /
+# CVE-2026-109619); bump both FROM lines together.
 # ---------------------------------------------------------------------------
-FROM php:8.3-fpm-bookworm AS builder
+FROM php:8.3.36-fpm-bookworm AS builder
 
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_NO_INTERACTION=1 \
@@ -114,7 +119,7 @@ RUN rm -rf var/*
 # Stage 2 — runtime. nginx + php-fpm + msmtp in a single container
 # orchestrated by supervisord.
 # ---------------------------------------------------------------------------
-FROM php:8.3-fpm-bookworm AS runtime
+FROM php:8.3.36-fpm-bookworm AS runtime
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
