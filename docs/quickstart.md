@@ -8,8 +8,9 @@ End-to-end installation on a Kubernetes cluster. Two paths:
 - **You have your own Magento image.** ~5 minutes from a fresh
   cluster to a working store. This is the canonical path; jump to
   [Step 1](#step-1--install-the-dependency-operators).
-- **You don't have an image yet.** The reference image is
-  temporarily withdrawn; see
+- **You don't have an image yet** and want to try the operator
+  end-to-end. The repo ships a reference image you can build and
+  use locally; ~30 minutes for the first build (one-time). Skip to
   [Using the reference image on kind](#using-the-reference-image-on-kind).
 
 ## What you'll have at the end
@@ -208,12 +209,42 @@ kubectl exec deployment/store-frontend -- \
 
 ## Using the reference image on kind
 
-> **Temporarily withdrawn.** The reference image at
-> `magento-test-image/` builds on `php:8.3-fpm-bookworm`, which is
-> vulnerable to PHP2Shell (CVE-2026-109618 / CVE-2026-109619) until
-> PHP's fixed release. The build instructions return once the image
-> is rebuilt on patched PHP. Until then, build your own image on
-> patched PHP following [`image-contract.md`](image-contract.md).
+If you don't have your own Magento image yet, the repo includes a
+reference image at `magento-test-image/` that satisfies the
+operator's image contract. Useful for trying the operator
+end-to-end before investing in your own image build.
+
+The first build takes ~25-30 minutes (composer pulls ~600
+packages; `setup:di:compile` and `setup:static-content:deploy`
+are CPU-bound). Allow ~4 GB of disk space.
+
+```bash
+# Clone the repo (skip if you already did in Step 2).
+git clone https://github.com/aknostic/mage-k8s-operator.git
+cd mage-k8s-operator
+
+# Build and load the image.
+docker build -t mage-operator/magento-reference:2.4.8 magento-test-image/
+kind load docker-image mage-operator/magento-reference:2.4.8 \
+  --name mage-operator-dev
+
+# Apply the bundled demo MageStore (uses the reference image,
+# enables every feature: workloads + consumers + cron + varnish).
+kubectl apply -k config/samples/
+```
+
+Then wait for Ready as in [Step 4](#step-4--wait-for-ready) — note
+the demo CR is in the `demo` namespace, not `default`:
+
+```bash
+kubectl -n demo wait --for=condition=Ready magestore/store --timeout=10m
+```
+
+The image-contract specification at
+[`image-contract.md`](image-contract.md) is the canonical
+reference for building your own image. Fork
+`magento-test-image/` as a starting template, or roll your own
+from scratch.
 
 ## Use your own image (replacing the reference image)
 
