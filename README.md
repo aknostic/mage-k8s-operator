@@ -1,10 +1,3 @@
-> **WARNING — PHP2SHELL (CVE-2026-109618 / CVE-2026-109619): EVERY MAGENTO
-> IMAGE RUNS PHP AND IS VULNERABLE UNTIL REBUILT ON THE PATCHED PHP RELEASE
-> (21 OCT 2026, 14:00 UTC). WE PUBLISH NO PREBUILT MAGENTO IMAGES, AND WE HAVE
-> TAKEN THE REFERENCE IMAGE OFFLINE: PUBLISHING IS DISABLED AND ITS BUILD
-> INSTRUCTIONS ARE WITHDRAWN UNTIL THE PATCH IS OUT. DO NOT BUILD
-> `magento-test-image/` UNTIL PATCHED `php:8.3-fpm` IMAGES ARE AVAILABLE.**
-
 # mage-operator
 
 Run your Magento, Adobe Commerce, or Mage-OS store on Kubernetes
@@ -115,16 +108,18 @@ For production / HA configuration:
 
 ### Don't have a Magento image yet?
 
-The reference image at `magento-test-image/` is temporarily
-withdrawn: it builds on PHP that is vulnerable to PHP2Shell
-(CVE-2026-109618 / CVE-2026-109619) until PHP's fixed release.
-Bring your own image built on patched PHP; see
-[`docs/image-contract.md`](docs/image-contract.md).
+The repo includes a reference image at `magento-test-image/` that
+satisfies the contract — useful for trying the operator end-to-end
+on a local kind cluster without building your own image first.
+The reference-image walkthrough lives in the [quickstart](docs/quickstart.md#using-the-reference-image-on-kind);
+allow ~30 minutes for the first build (composer install +
+`setup:di:compile` + `setup:static-content:deploy` are CPU-bound).
 
 ## Documentation
 
 - **[`docs/quickstart.md`](docs/quickstart.md)** — end-to-end
-  install on kind, including admin-panel access.
+  install on kind, including admin-panel access. Also covers the
+  reference-image build path.
 - **[`docs/minimal-magestore.md`](docs/minimal-magestore.md)** —
   smallest viable `MageStore` examples (pre-bootstrapped DB and
   fresh install).

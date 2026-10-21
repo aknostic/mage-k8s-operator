@@ -199,15 +199,18 @@ closes the arc.
   `govulncheck` reported it as reachable and failed CI on `main`.
   The image builder moves `golang:1.26.9` → `golang:1.26.10` and
   `go.mod`'s `toolchain` follows.
-- **PHP2Shell warning; reference image withdrawn.**
-  CVE-2026-109618 / CVE-2026-109619 are critical PHP RCEs with
-  fixes due 2026-10-21 14:00 UTC. The operator image carries no
-  PHP and is unaffected, but every Magento image it runs does, and
-  `magento-test-image/` builds on `php:8.3-fpm-bookworm`. The
-  README now opens with a warning, the reference-image build
-  instructions in the README and quickstart are replaced by a
-  withdrawal note, and the reference-image publishing workflow is
-  disabled until patched PHP images are available.
+- **Reference image pinned to PHP 8.3.36 (PHP2Shell).**
+  CVE-2026-109618 / CVE-2026-109619 are critical, unauthenticated
+  PHP RCEs, fixed in PHP 8.5.12, 8.4.27, 8.3.36 and 8.2.35
+  (2026-10-21). The operator image carries no PHP and is
+  unaffected, but every Magento image it runs does.
+  `magento-test-image/` now pins `php:8.3.36-fpm-bookworm` instead
+  of the floating `php:8.3-fpm-bookworm` tag (which still pointed
+  at 8.3.35 when the patched tag shipped), and
+  `make build-reference-image` builds with `--pull`. Until the
+  patched image was available the README carried a warning and
+  the reference-image instructions were withdrawn (#46); both are
+  restored. Rebuild your own images on a patched PHP.
 
 ## [v0.6.4] - 2026-05-08
 

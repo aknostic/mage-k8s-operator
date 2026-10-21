@@ -109,7 +109,7 @@ setup-test-e2e: ## Set up a Kind cluster + install dep operators for e2e tests
 .PHONY: build-reference-image
 build-reference-image: ## Build the magento-reference image and load it into the e2e kind cluster
 	@echo "Building $(MAGENTO_REFERENCE_IMAGE) (first build ~20-30 min; cached subsequent)..."
-	$(CONTAINER_TOOL) build -t $(MAGENTO_REFERENCE_IMAGE) magento-test-image/
+	$(CONTAINER_TOOL) build --pull -t $(MAGENTO_REFERENCE_IMAGE) magento-test-image/
 	@echo "Loading $(MAGENTO_REFERENCE_IMAGE) into kind cluster $(KIND_CLUSTER)..."
 	$(KIND) load docker-image $(MAGENTO_REFERENCE_IMAGE) --name $(KIND_CLUSTER)
 
