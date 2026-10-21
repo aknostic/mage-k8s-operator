@@ -193,6 +193,21 @@ closes the arc.
   dependencies move to `x/net` v0.60.0, `x/text` v0.42.0, `grpc`
   v1.83.1 and `otel` v1.45.0. `govulncheck` now reports 0
   reachable vulnerabilities.
+- **Go 1.26.10 clears `govulncheck`.** GO-2026-6809 (published
+  2026-10-21) distrusts compromised intermediate certificates in
+  the standard library's `crypto/x509`; fixed in Go 1.26.10.
+  `govulncheck` reported it as reachable and failed CI on `main`.
+  The image builder moves `golang:1.26.9` → `golang:1.26.10` and
+  `go.mod`'s `toolchain` follows.
+- **PHP2Shell warning; reference image withdrawn.**
+  CVE-2026-109618 / CVE-2026-109619 are critical PHP RCEs with
+  fixes due 2026-10-21 14:00 UTC. The operator image carries no
+  PHP and is unaffected, but every Magento image it runs does, and
+  `magento-test-image/` builds on `php:8.3-fpm-bookworm`. The
+  README now opens with a warning, the reference-image build
+  instructions in the README and quickstart are replaced by a
+  withdrawal note, and the reference-image publishing workflow is
+  disabled until patched PHP images are available.
 
 ## [v0.6.4] - 2026-05-08
 
