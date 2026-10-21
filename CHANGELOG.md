@@ -199,6 +199,24 @@ closes the arc.
   dependencies move to `x/net` v0.60.0, `x/text` v0.42.0, `grpc`
   v1.83.1 and `otel` v1.45.0. `govulncheck` now reports 0
   reachable vulnerabilities.
+- **Go 1.26.10 clears `govulncheck`.** GO-2026-6809 (published
+  2026-10-21) distrusts compromised intermediate certificates in
+  the standard library's `crypto/x509`; fixed in Go 1.26.10.
+  `govulncheck` reported it as reachable and failed CI on `main`.
+  The image builder moves `golang:1.26.9` → `golang:1.26.10` and
+  `go.mod`'s `toolchain` follows.
+- **Reference image pinned to PHP 8.3.36 (PHP2Shell).**
+  CVE-2026-109618 / CVE-2026-109619 are critical, unauthenticated
+  PHP RCEs, fixed in PHP 8.5.12, 8.4.27, 8.3.36 and 8.2.35
+  (2026-10-21). The operator image carries no PHP and is
+  unaffected, but every Magento image it runs does.
+  `magento-test-image/` now pins `php:8.3.36-fpm-bookworm` instead
+  of the floating `php:8.3-fpm-bookworm` tag (which still pointed
+  at 8.3.35 when the patched tag shipped), and
+  `make build-reference-image` builds with `--pull`. Until the
+  patched image was available the README carried a warning and
+  the reference-image instructions were withdrawn (#46); both are
+  restored. Rebuild your own images on a patched PHP.
 
 ## [v0.6.4] - 2026-05-08
 

@@ -2,7 +2,7 @@ module github.com/aknostic/mage-k8s-operator
 
 go 1.26.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/mariadb-operator/mariadb-operator/v26 v26.3.0
