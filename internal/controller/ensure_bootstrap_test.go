@@ -169,6 +169,13 @@ var _ = Describe("buildBootstrapScript", func() {
 			},
 		),
 	)
+
+	It("passes --db-host as host:port so external databases on a non-3306 port install (#34)", func() {
+		script := buildBootstrapScript(minimalBootstrapStore())
+		Expect(script).To(ContainSubstring(
+			`--db-host="${MAGENTO_DATABASE_HOST}:${MAGENTO_DATABASE_PORT}"`),
+			"setup:install must target the same host:port as the PDO line")
+	})
 })
 
 var _ = Describe("buildBootstrapJob SMTP envFrom", func() {

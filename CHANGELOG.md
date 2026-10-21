@@ -92,6 +92,12 @@ closes the arc.
 
 ### Fixed
 
+- **`setup:install` now receives the database port.** The bootstrap
+  script passed `--db-host="${MAGENTO_DATABASE_HOST}"` without a port,
+  so an external database on anything but 3306 failed the install while
+  the PDO pre-check in the same script already used
+  `MAGENTO_DATABASE_PORT`. `--db-host` is now
+  `"${MAGENTO_DATABASE_HOST}:${MAGENTO_DATABASE_PORT}"` (#34).
 - **`scripts/dev-k8s-setup.sh` works with Helm 4.** Helm 4 (now
   Homebrew's default) applies the Envoy Gateway chart's bundled
   Gateway API CRDs with server-side apply, which conflicted with the
