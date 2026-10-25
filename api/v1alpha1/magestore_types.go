@@ -798,7 +798,8 @@ type WorkloadsSpec struct {
 	// operator does not validate digest-stability when this override
 	// is in effect. Applies to every pod the operator runs from the
 	// store's image: frontend / admin / api workloads, the ~20
-	// queue-consumer Deployments, Varnish, and the one-shot Jobs
+	// queue-consumer Deployments, Varnish, the cron CronJob pods,
+	// and the one-shot Jobs
 	// (bootstrap, smtp probe, store-urls, media seed, upgrade). Use
 	// `IfNotPresent` or `Never` for images that exist only on the
 	// nodes, such as images loaded with `kind load docker-image`.

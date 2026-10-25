@@ -211,12 +211,13 @@ func (r *MageStoreReconciler) ensureCronJob(ctx context.Context, store *magev1al
 			})
 		}
 		container := corev1.Container{
-			Name:      "cron",
-			Image:     image,
-			Command:   []string{"bin/magento"},
-			Args:      []string{"cron:run", "--group=" + group},
-			EnvFrom:   cronEnvFrom,
-			Resources: resources,
+			Name:            "cron",
+			Image:           image,
+			ImagePullPolicy: workloadImagePullPolicy(store),
+			Command:         []string{"bin/magento"},
+			Args:            []string{"cron:run", "--group=" + group},
+			EnvFrom:         cronEnvFrom,
+			Resources:       resources,
 		}
 		cj.Spec.JobTemplate.Spec.Template.Spec.Containers = []corev1.Container{container}
 		cj.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyOnFailure

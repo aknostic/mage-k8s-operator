@@ -92,6 +92,12 @@ closes the arc.
 
 ### Fixed
 
+- **Cron pods honour `spec.workloads.imagePullPolicy`.** The cron
+  container set no `ImagePullPolicy`, so cron pods got the Kubernetes
+  default (`IfNotPresent` for non-`latest` tags) and could run older
+  code than the storefront on a retagged image. The container now uses
+  `workloadImagePullPolicy(store)` like every other pod the operator
+  builds from the store image (#33).
 - **`scripts/dev-k8s-setup.sh` works with Helm 4.** Helm 4 (now
   Homebrew's default) applies the Envoy Gateway chart's bundled
   Gateway API CRDs with server-side apply, which conflicted with the
